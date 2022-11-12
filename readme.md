@@ -2,7 +2,7 @@
 A type checker based on system F-omega with pattern unifiction and implicit parameters
 
 ### Future Ideas
-- expose type-level application to user, kinds, type definitions
+- expose type-level application to user, type definitions
 - operators on built-in types (maybe full user-defined operators??)
 - recursive bindings
 - custom type formers (very simple ADTs)

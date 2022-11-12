@@ -31,11 +31,15 @@ let ex_nat () =
 let ex_pair () =
   print_endline "\n\nPairs";
   run_infer "pair" "ΛA. ΛB. λx. λy. ΛC. λf:A → B → C. f x y";
+  run_infer "fst" "ΛA. ΛB. λp:(∀C. (A → B → C) → C). p [A] (λa:A. λb:B. a)";
+  run_infer "snd" "ΛA. ΛB. λp:(∀C. (A → B → C) → C). p [B] (λa:A. λb:B. b)";
   ()
 
 let ex_basic () =
+  print_endline "\n\nBasics";
   run_infer "identity" "let id = ΛX. λx:X. x in id 42";
-  run_infer "self app" "λx:(∀X. X → X). x [∀X. X → X] x";
+  run_infer "self app" "λx:(∀X. X → X). x x";
+  run_infer "const" "ΛA. ΛB. λa:A. λb:B. a";
   ()
 
 let () =

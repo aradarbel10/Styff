@@ -1,6 +1,5 @@
 open Batteries.Uref
 
-
 type name = string
 
 type base = [`Nat | `Bool]
@@ -20,7 +19,7 @@ type rexpr =
 | RVar of name
 | RAnn of rexpr * rtyp
 | RLam of name * rtyp option * rexpr
-| RTlam of name * rexpr
+| RTlam of name * unit option * rexpr
 | RApp of rexpr * rexpr
 | RInst of rexpr * rtyp
 | RLet of name * rexpr * rexpr
@@ -35,15 +34,13 @@ type expr =
 | Let of name * typ * expr * expr
 | Lit of lit
 
-and kind =
-| Star
-
 and typ =
 | Tvar of tvar uref
 | Inserted of tvar uref * mask
 | Qvar of idx
 | Arrow of typ * typ
 | Tapp of typ * typ
+| TAbs of name * bdr
 | Forall of name * bdr
 | Base of base
 and bdr = B of typ
@@ -51,6 +48,7 @@ and mask = bool list (* true -- bound ;; false -- unbound *)
 
 and vtyp =
 | VArrow of vtyp * vtyp
+| VAbs of name * clos
 | VForall of name * clos
 | VBase of base
 | VNeut of head * spine
@@ -63,6 +61,14 @@ and head =
 and spine = vtyp list
 and clos = {env : env; bdr : bdr}
 and env = (name * vtyp) list
+
+and kind =
+| Star
+| KArrow of kind * kind
+| KVar of kvar uref
+and kvar =
+| KSolved of kind
+| KUnsolved of name
 
 
 let unLvl (Lvl i) = i

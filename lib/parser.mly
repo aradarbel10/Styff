@@ -45,7 +45,7 @@ expr:
       similar reason for most other "big" constructs. *)
     %prec WEAK { RLam (x, t, e) }
   | TLAM; x=IDENT; DOT; e=expr
-    %prec WEAK { RTlam (x, e) }
+    %prec WEAK { RTlam (x, None, e) }
   | LET; x=IDENT; EQ; e=expr; IN; r=expr
     %prec WEAK { RLet (x, e, r) }
 

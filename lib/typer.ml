@@ -9,11 +9,13 @@ module Fresh : sig
   val uniquei : int
   val freshen : name -> name
   val fresh : mask -> name -> typ
+  val freshk : name -> kind
 end = struct
   let freshi = ref (-1)
   let uniquei = freshi := !freshi + 1; !freshi
   let freshen (x : name) = x ^ string_of_int uniquei
   let fresh (msk : mask) (x : name) = Inserted (uref (Unsolved (freshen x)), msk)
+  let freshk (x : name) = KVar (uref (KUnsolved (freshen x)))
 end
 open Fresh
 
@@ -55,7 +57,7 @@ exception UndefinedVar of name
 exception UndefinedQVar of name
 exception Unexpected of typ
 exception NoFirstClassTypes of name
-exception ExpectedType of name
+exception UnexpectedHigherKind
 
 let unify' (scn : scene) (t : vtyp) (t' : vtyp) =
   try unify scn.height t t' with
@@ -87,7 +89,10 @@ let insert_unless (scn : scene) (e, t : expr * vtyp) : expr * vtyp =
 let rec kind_of (scn : scene) : rtyp -> typ * kind = function
 | RArrow (lt, rt) -> (Arrow (is_type scn lt, is_type scn rt), Star)
 | RBase b -> (Base b, Star)
-| RForall (x, t) -> (Forall (x, B (is_type (assume_typ scn x Star) t)), Star)
+| RForall (x, t) ->
+  let xk = freshk x in
+  let t = is_type (assume_typ scn x xk) t in
+  (Forall (x, B t), Star)
 | RHole -> (fresh scn.msk "t", Star)
 | RQvar x ->
   match assoc_idx x scn.tctx with
@@ -95,8 +100,10 @@ let rec kind_of (scn : scene) : rtyp -> typ * kind = function
   | None -> raise (UndefinedQVar x)
 and is_type (scn : scene) (t : rtyp) : typ =
   let (t, k) = kind_of scn t in
-  match k with
+  match forcek k with
   | Star -> t
+  | KVar kv -> unify_kinds (KVar kv) Star; t
+  | _ -> raise UnexpectedHigherKind
 
 let rec type_of (scn : scene) : rexpr -> expr * vtyp = function
 | RAnn (e, t) ->
@@ -121,9 +128,11 @@ let rec type_of (scn : scene) : rexpr -> expr * vtyp = function
   let (e, te) = insert_unless scn @@ type_of (assume scn x tx) e in
   (Lam (x, quote scn.height tx, e), VArrow (tx, te))
 
-| RTlam (x, e) ->
-  let (e, te) = insert_unless scn @@ type_of (assume_typ scn x Star) e in
+| RTlam (x, None, e) ->
+  let (e, te) = insert_unless scn @@ type_of (assume_typ scn x Star) e in (* TODO assume with fresh kvar *)
   (Tlam (x, e), VForall (x, clos_of scn te))
+
+| RTlam (_x, Some _, _e) -> failwith "unimplemented"
 
 | RApp (e1, e2) ->
   let (e1, te1) = insert scn @@ type_of scn e1 in
@@ -134,10 +143,10 @@ let rec type_of (scn : scene) : rexpr -> expr * vtyp = function
 
 | RInst (e, t) ->
   let (e, te) = type_of scn e in
-  let (t, _k) = kind_of scn t in
+  let (t, k) = kind_of scn t in
 
   let x = freshen "x" in
-  let ret = fresh (assume_typ scn x Star).msk "ret" in
+  let ret = fresh (assume_typ scn x k).msk "ret" in
   let clos = {env = scn.env; bdr = B ret} in
 
   unify' scn te (VForall (x, clos));

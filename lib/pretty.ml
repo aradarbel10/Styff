@@ -23,6 +23,7 @@ let rec string_of_type (nms : name list) (t : typ) : string =
   | Inserted (tv, _msk) -> go p nms (Tvar tv)
   | Arrow (lt, rt) -> parens (p > 1) @@ go 2 nms lt ^ " → " ^ go 1 nms rt
   | Tapp (t1, t2) -> parens (p > 2) @@ go 2 nms t1 ^ " " ^ go 3 nms t2
+  | TAbs (x, B t) -> parens (p > 0) @@ "λ" ^ x ^ ". " ^ go 0 (x :: nms) t
   | Forall (x, B t) -> parens (p > 0) @@ "∀" ^ x ^ ". " ^ go 0 (x :: nms) t
   | Base b -> string_of_base b
   in go 0 nms t

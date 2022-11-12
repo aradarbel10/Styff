@@ -16,7 +16,7 @@ exception NonLinearSpine
 exception OccursError
 exception IllScopedSpine
 
-let rec invert (hi : lvl) : spine -> partial_renaming = function (* force *)
+let rec invert (hi : lvl) : spine -> partial_renaming = function
 | [] -> { dom = Lvl 0; cod = hi; ren = [] }
 | (t' :: sp) ->
   match force t' with
@@ -41,11 +41,13 @@ let rec rename (r : partial_renaming) (t : vtyp) (tv' : tvar uref) : typ =
       | Some i' -> rename_spine r (Qvar (lvl2idx r.dom i')) sp tv'
     end
   | VArrow (lt, rt) -> Arrow (rename r lt tv', rename r rt tv')
-  | VForall (x, c) ->
-    let bod = cinst_at r.cod x c in
-    let bdr = rename (lift r) bod tv' in
-    Forall (x, B bdr)
+  | VAbs (x, c) -> TAbs (x, rename_clos r x c tv')
+  | VForall (x, c) -> Forall (x, rename_clos r x c tv')
   | VBase b -> Base b
+and rename_clos (r : partial_renaming) (x : name) (c : clos) (tv' : tvar uref) : bdr =
+  let bod = cinst_at r.cod x c in
+  let bdr = rename (lift r) bod tv' in
+  B bdr
 and rename_spine (r : partial_renaming) (t : typ) (sp : spine) (tv' : tvar uref) : typ =
   match sp with
   | [] -> t
@@ -54,13 +56,15 @@ and rename_spine (r : partial_renaming) (t : typ) (sp : spine) (tv' : tvar uref)
 
 exception Ununifiable
 exception DifferentSpineLength
+exception UnunifiableKinds
 
 let rec close (Lvl i : lvl) (t : typ) : typ =
   if i < 0
     then raise (Invalid_argument "can't wrap negative lambdas")
   else if i = 0
     then t
-  else close (Lvl (i - 1)) (Forall ("x" ^ string_of_int i, B t))
+  else
+    close (Lvl (i - 1)) (TAbs ("x" ^ string_of_int i, B t))
 
 let solve (hi : lvl) (tv : tvar uref) (sp : spine) (t : vtyp) : unit =
   let ren = invert hi sp in
@@ -75,6 +79,7 @@ let rec unify (hi : lvl) (typ : vtyp) (typ' : vtyp) : unit =
   | VNeut (VTvar tv, sp), t | t, VNeut (VTvar tv, sp) -> solve hi tv sp t
   | VArrow (ltyp, rtyp), VArrow (ltyp', rtyp') ->
     unify hi ltyp ltyp'; unify hi rtyp rtyp'
+  | VAbs (x, c), VAbs (x', c') -> unify (inc hi) (cinst_at hi x c) (cinst_at hi x' c')
   | VForall (x, c), VForall (x', c') -> unify (inc hi) (cinst_at hi x c) (cinst_at hi x' c')
   | VBase b, VBase b' when b = b' -> ()
   | t, t' -> let _ = (t, t') in raise Ununifiable
@@ -83,3 +88,11 @@ and unify_spines (hi : lvl) (sp : spine) (sp' : spine) =
   | [], [] -> ()
   | (t :: sp), (t' :: sp') -> unify_spines hi sp sp'; unify hi t t'
   | _ -> raise DifferentSpineLength
+
+and unify_kinds (k : kind) (k' : kind) =
+  match forcek k, forcek k' with
+  | Star, Star -> ()
+  | KArrow (lk, rk), KArrow (lk', rk') -> unify_kinds lk lk'; unify_kinds rk rk'
+  | KVar kv, KVar kv' when kv = kv' -> ()
+  | KVar kv, k | k, KVar kv -> uset kv (KSolved k)
+  | _ -> raise UnunifiableKinds
