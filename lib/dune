@@ -1,0 +1,9 @@
+(library
+  (public_name implifit)
+  (name implifit)
+  (libraries batteries))
+
+(ocamllex lexer)
+(menhir
+  (modules parser)
+  (flags --explain))
