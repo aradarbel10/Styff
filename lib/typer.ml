@@ -89,6 +89,17 @@ let insert_unless (scn : scene) (e, t : expr * vtyp) : expr * vtyp =
 let rec kind_of (scn : scene) : rtyp -> typ * kind = function
 | RArrow (lt, rt) -> (Arrow (is_type scn lt, is_type scn rt), Star)
 | RBase b -> (Base b, Star)
+| RTapp (t1, t2) ->
+  let (t1, k1) = kind_of scn t1 in
+  let (t2, k2) = kind_of scn t2 in
+  let kv = freshk "k" in
+  unify_kinds k1 (KArrow (k2, kv));
+  (Tapp (t1, t2), kv)
+| RTAbs (x, None, t) ->
+  let kv = freshk "k" in
+  let (t, k) = kind_of (assume_typ scn x kv) t in
+  (t, KArrow (kv, k))
+| RTAbs (_x, Some _k, _t) -> failwith "unimplemented"
 | RForall (x, t) ->
   let xk = freshk x in
   let t = is_type (assume_typ scn x xk) t in

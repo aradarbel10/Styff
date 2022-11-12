@@ -44,11 +44,3 @@ and string_of_expr (nms : name list) (tps : name list) (expr : expr) : string =
     ^ " = " ^ go 0 nms (* TODO remember to change this when adding recursive binds *) tps e ^ " in " ^ go 0 (x :: nms) tps rest
   | Lit l -> string_of_lit l
   in go 0 nms tps expr
-
-
-let rec string_of_rtype : rtyp -> string = function
-| RQvar x -> x
-| RArrow (lt, rt) -> string_of_rtype lt ^ " → " ^ string_of_rtype rt
-| RForall (x, t) -> "∀" ^ x ^ ". " ^ string_of_rtype t
-| RBase b -> string_of_base b
-| RHole -> "_"

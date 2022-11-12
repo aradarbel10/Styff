@@ -8,9 +8,15 @@ type lit = [`Nat of int | `Bool of bool]
 type idx = Idx of int
 type lvl = Lvl of int
 
+type rkind =
+| RStar
+| RKArrow of rkind * rkind
+
 type rtyp =
 | RQvar of name
 | RArrow of rtyp * rtyp
+| RTapp of rtyp * rtyp
+| RTAbs of name * rkind option * rtyp
 | RForall of name * rtyp
 | RBase of base
 | RHole
