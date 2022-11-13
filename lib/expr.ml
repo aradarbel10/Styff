@@ -17,6 +17,7 @@ type rtyp =
 | RArrow of rtyp * rtyp
 | RTapp of rtyp * rtyp
 | RTAbs of name * rkind option * rtyp
+| RTLet of name * rkind option * rtyp * rtyp
 | RForall of name * rtyp
 | RBase of base
 | RHole
@@ -25,11 +26,19 @@ type rexpr =
 | RVar of name
 | RAnn of rexpr * rtyp
 | RLam of name * rtyp option * rexpr
-| RTlam of name * unit option * rexpr
+| RTlam of name * rkind option * rexpr
 | RApp of rexpr * rexpr
 | RInst of rexpr * rtyp
-| RLet of name * rexpr * rexpr
+| RLet of name * rtyp option * rexpr * rexpr
 | RLit of lit
+
+type stmt =
+| Def of name * rtyp option * rexpr
+| TDef of name * rkind option * rtyp
+| Infer of name * rexpr
+| TInfer of name * rtyp
+type prog = stmt list
+
 
 type expr =
 | Var of idx
@@ -47,6 +56,7 @@ and typ =
 | Arrow of typ * typ
 | Tapp of typ * typ
 | TAbs of name * bdr
+| TLet of name * typ * typ
 | Forall of name * bdr
 | Base of base
 and bdr = B of typ

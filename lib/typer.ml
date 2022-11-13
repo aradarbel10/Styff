@@ -31,6 +31,8 @@ type scene = {
 }
 
 let empty_scene : scene = {ctx = []; height = Lvl 0; tctx = []; env = []; msk = []}
+let names scn = List.map fst scn.ctx
+let tps scn = List.map fst scn.tctx
 
 let assume (scn : scene) (x : name) (t : vtyp) : scene =
   {scn with
@@ -86,6 +88,10 @@ let insert_unless (scn : scene) (e, t : expr * vtyp) : expr * vtyp =
   | Tlam _ -> (e, t)
   | _ -> insert scn (e, t)
 
+let rec lower_kind : rkind -> kind = function
+| RStar -> Star
+| RKArrow (lk, rk) -> KArrow (lower_kind lk, lower_kind rk)
+
 let rec kind_of (scn : scene) : rtyp -> typ * kind = function
 | RArrow (lt, rt) -> (Arrow (is_type scn lt, is_type scn rt), Star)
 | RBase b -> (Base b, Star)
@@ -95,11 +101,19 @@ let rec kind_of (scn : scene) : rtyp -> typ * kind = function
   let kv = freshk "k" in
   unify_kinds k1 (KArrow (k2, kv));
   (Tapp (t1, t2), kv)
+| RTLet (x, k, t, rest) ->
+  let (scn, t, vt, k) = infer_let_type scn x k t in
+  let (rest, krest) = kind_of (define_typ scn x vt k) rest in
+  (TLet (x, t, rest), krest)
 | RTAbs (x, None, t) ->
   let kv = freshk "k" in
   let (t, k) = kind_of (assume_typ scn x kv) t in
   (t, KArrow (kv, k))
-| RTAbs (_x, Some _k, _t) -> failwith "unimplemented"
+| RTAbs (x, Some k, t) ->
+  let (t, k') = kind_of scn (RTAbs (x, None, t)) in
+  let k = lower_kind k in
+  unify_kinds k k';
+  (t, k)
 | RForall (x, t) ->
   let xk = freshk x in
   let t = is_type (assume_typ scn x xk) t in
@@ -115,6 +129,11 @@ and is_type (scn : scene) (t : rtyp) : typ =
   | Star -> t
   | KVar kv -> unify_kinds (KVar kv) Star; t
   | _ -> raise UnexpectedHigherKind
+and infer_let_type (scn : scene) (x : name) (_ : rkind option) (t : rtyp) : scene * typ * vtyp * kind =
+  let (t, k) = kind_of scn t in
+  let vt = eval scn.env t in
+  (define_typ scn x vt k, t, vt, k)
+
 
 let rec type_of (scn : scene) : rexpr -> expr * vtyp = function
 | RAnn (e, t) ->
@@ -131,19 +150,23 @@ let rec type_of (scn : scene) : rexpr -> expr * vtyp = function
 
 | RLam (x, None, e) ->
   let tx = eval scn.env (fresh scn.msk x) in
-  let (e, te) = insert_unless scn @@ type_of (assume scn x tx) e in
+  let (e, te) = type_of (assume scn x tx) e in
   (Lam (x, quote scn.height tx, e), VArrow (tx, te))
 
 | RLam (x, Some tx, e) ->
   let tx = eval scn.env (is_type scn tx) in
-  let (e, te) = insert_unless scn @@ type_of (assume scn x tx) e in
+  let (e, te) = type_of (assume scn x tx) e in
   (Lam (x, quote scn.height tx, e), VArrow (tx, te))
 
 | RTlam (x, None, e) ->
-  let (e, te) = insert_unless scn @@ type_of (assume_typ scn x Star) e in (* TODO assume with fresh kvar *)
+  let k = freshk "k" in
+  let (e, te) = insert_unless scn @@ type_of (assume_typ scn x k) e in
   (Tlam (x, e), VForall (x, clos_of scn te))
 
-| RTlam (_x, Some _, _e) -> failwith "unimplemented"
+| RTlam (x, Some k, e) ->
+  let k = lower_kind k in
+  let (e, te) = insert_unless scn @@ type_of (assume_typ scn x k) e in
+  (Tlam (x, e), VForall (x, clos_of scn te))
 
 | RApp (e1, e2) ->
   let (e1, te1) = insert scn @@ type_of scn e1 in
@@ -163,10 +186,20 @@ let rec type_of (scn : scene) : rexpr -> expr * vtyp = function
   unify' scn te (VForall (x, clos));
   (Inst (e, t), capp x clos (eval scn.env t))
 
-| RLet (x, e, rest) ->
-  let (e, te) = type_of scn e in
+| RLet (x, t, e, rest) ->
+  let (scn, e, te) = infer_let scn x t e in
   let (rest, trest) = type_of (assume scn x te) rest in
   (Let (x, quote scn.height te, e, rest), trest)
 
 | RLit n ->
   (Lit n, VBase (type_of_lit n))
+
+and infer_let (scn : scene) (x : name) (t : rtyp option) (e : rexpr) : scene * expr * vtyp =
+  let (e, te) = type_of scn e in
+  begin match t with
+  | Some t' ->
+    let t' = eval scn.env (is_type scn t') in
+    unify' scn te t'
+  | None -> ()
+  end;
+  (assume scn x te, e, te)

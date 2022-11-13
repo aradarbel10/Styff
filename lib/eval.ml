@@ -17,6 +17,9 @@ let rec forcek (k : kind) : kind =
 let rec eval (env : env) : typ -> vtyp = function
 | Arrow (lt, rt) -> VArrow (eval env lt, eval env rt)
 | TAbs (x, b) -> VAbs (x, {env = env; bdr = b})
+| TLet (x, t, rest) ->
+  let vt = eval env t in
+  eval ((x, vt) :: env) rest
 | Forall (x, b) -> VForall (x, {env = env; bdr = b})
 | Tapp (t1, t2) -> vapp (eval env t1) (eval env t2)
 | Tvar tv -> vtvar tv
@@ -33,7 +36,7 @@ and capp (x : name) ({env = env; bdr = B b} : clos) (t : vtyp) : vtyp =
 and cinst_at (hi : lvl) (x : name) (c : clos) =
   capp x c (vqvar hi)
 and vapp (t1 : vtyp) (t2 : vtyp): vtyp =
-  match t1 with
+  match force t1 with
   | VAbs (x, c) -> capp x c t2
   | VNeut (hd, sp) -> VNeut (hd, t2 :: sp)
   | _ -> raise AppNonAbs
@@ -51,12 +54,12 @@ and app_mask (env : env) (msk : mask) (hd : vtyp) : vtyp =
       else hd
   | _ -> raise IllLengthedMask
 
-let rec app_spine (t : vtyp) (sp : spine) : vtyp =
+and app_spine (t : vtyp) (sp : spine) : vtyp =
   match sp with
   | [] -> t
   | arg :: sp -> vapp (app_spine t sp) arg
 
-let rec force (t : vtyp) : vtyp =
+and force (t : vtyp) : vtyp =
   match t with
   | VNeut (VTvar tv, sp) ->
     begin match uget tv with
@@ -84,3 +87,19 @@ and quote_clos (hi : lvl) (x : name) (c : clos) : bdr =
   let bod = cinst_at hi x c in
   let bdr = quote (inc hi) bod in
   B bdr
+
+let norm (env : env) (t : typ) : typ =
+  let vt = eval env t in
+  quote (Lvl (List.length env)) vt
+
+let rec norm_expr (env : env) (e : expr) : expr =
+  match e with
+  | Var i -> Var i
+  | Lam (x, t, e) -> Lam (x, norm env t, norm_expr env e)
+  | Tlam (x, e) ->
+    let v = vqvar (Lvl (List.length env)) in
+    Tlam (x, norm_expr ((x, v) :: env) e)
+  | App (e1, e2) -> App (norm_expr env e1, norm_expr env e2)
+  | Inst (e, t) -> Inst (norm_expr env e, norm env t)
+  | Let (x, t, e, rest) -> Let (x, norm env t, norm_expr env e, norm_expr env rest)
+  | Lit l -> Lit l

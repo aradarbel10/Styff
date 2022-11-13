@@ -29,10 +29,13 @@ rule read = parse
   | whitespace  { read lexbuf }
   | newline     { next_line lexbuf; read lexbuf }
   | "(*"        { read_comment lexbuf }
+  | "infer"     { INFER }
+  | "type"      { TYPE }
   | "bool"      { BOOL }
   | "true"      { TRUE }
   | "false"     { FALSE }
   | "nat"       { NAT }
+  | '*'         { STAR }
   | "lam"       { LAM }
   | "λ"         { LAM }
   | "Lam"       { TLAM }

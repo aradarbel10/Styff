@@ -20,12 +20,19 @@ let rec string_of_type (nms : name list) (t : typ) : string =
     | Unsolved x -> "?" ^ x
     end
   | Qvar (Idx i) -> List.nth nms i
-  | Inserted (tv, _msk) -> go p nms (Tvar tv)
+  | Inserted (tv, msk) -> go_inserted p nms tv msk
   | Arrow (lt, rt) -> parens (p > 1) @@ go 2 nms lt ^ " → " ^ go 1 nms rt
   | Tapp (t1, t2) -> parens (p > 2) @@ go 2 nms t1 ^ " " ^ go 3 nms t2
+  | TLet (x, t, rest) -> parens (p > 0) @@ "let type " ^ x ^ " = " ^ go 0 nms t ^ " in " ^ go 0 (x :: nms) rest
   | TAbs (x, B t) -> parens (p > 0) @@ "λ" ^ x ^ ". " ^ go 0 (x :: nms) t
   | Forall (x, B t) -> parens (p > 0) @@ "∀" ^ x ^ ". " ^ go 0 (x :: nms) t
   | Base b -> string_of_base b
+  and go_inserted (p : int) (nms : name list) (tv : tvar uref) (msk : mask) =
+    match nms, msk with
+    | [], [] -> go p nms (Tvar tv)
+    | x :: nms, true  :: msk -> parens (p > 2) @@ go_inserted 2 nms tv msk ^ " " ^ x
+    | _ :: nms, false :: msk -> go_inserted 2 nms tv msk
+    | _ -> raise (Failure "impossible - can't print ill-lengthed inserted meta")
   in go 0 nms t
 and string_of_vtype (nms : name list) (t : vtyp) : string =
   let hi = Lvl (List.length nms) in
@@ -44,3 +51,14 @@ and string_of_expr (nms : name list) (tps : name list) (expr : expr) : string =
     ^ " = " ^ go 0 nms (* TODO remember to change this when adding recursive binds *) tps e ^ " in " ^ go 0 (x :: nms) tps rest
   | Lit l -> string_of_lit l
   in go 0 nms tps expr
+
+and string_of_kind (k : kind) : string =
+  let rec go (p : int) (k : kind) : string =
+    match forcek k with
+    | Star -> "*"
+    | KArrow (lk, rk) -> parens (p > 1) @@ go 2 lk ^ " → " ^ go 1 rk
+    | KVar kv ->
+      match uget kv with
+      | KSolved k -> go p k
+      | KUnsolved x -> "?" ^ x
+  in go 0 k
