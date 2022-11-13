@@ -6,9 +6,12 @@ type bool' = ∀A. A → A → A
 let true'  : bool' = ΛA. λx:A. λy:A. x
 let false' : bool' = ΛA. λx:A. λy:A. y
 
-let and'  = λx:(∀A. A → A → A). λy:(∀A. A → A → A). x [∀A. A → A → A] y (ΛA. λx:A. λy:A. y)
-let and'' = λx:(∀A. A → A → A). λy. x [∀A. A → A → A] y (ΛA. λx. λy. y)
+let and'  = λx:bool'. λy:bool'. x [bool'] y false'
+let and'' = λx:bool'. λy. x y false'
 
 let pair = ΛA. ΛB. λx. λy. ΛC. λf:A → B → C. f x y
 let fst = ΛA. ΛB. λp:(∀C. (A → B → C) → C). p (λa:A. λb:B. a)
 let snd = ΛA. ΛB. λp:(∀C. (A → B → C) → C). p (λa:A. λb:B. b)
+
+let zero = ΛA. λs:(A → A). λz:A. z
+let succ = λn:(∀A. (A → A) → A → A). ΛA. λs. λz. s (n [A] s z)
