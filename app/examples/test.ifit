@@ -1,17 +1,20 @@
-let id = ΛA. λa:A. a
-let const = ΛA. ΛB. λa:A. λb:B. a
+let id [A] (a:A) = a
+let const [A B] (a:A) (b:B) = a
 
-type bool' = ∀A. A → A → A
+type bool' = [A] → A → A → A
 
-let true'  : bool' = ΛA. λx:A. λy:A. x
-let false' : bool' = ΛA. λx:A. λy:A. y
+let true'  : bool' = λ[A] (x y : A). x
+let false' : bool' = λ[A] (x y : A). y
 
-let and'  = λx:bool'. λy:bool'. x [bool'] y false'
-let and'' = λx:bool'. λy. x y false'
+let and'  = λ(x y : bool'). x [bool'] y false'
+let and'' = λ(x : bool') y. x y false'
 
-let pair = ΛA. ΛB. λx. λy. ΛC. λf:A → B → C. f x y
-let fst = ΛA. ΛB. λp:(∀C. (A → B → C) → C). p (λa:A. λb:B. a)
-let snd = ΛA. ΛB. λp:(∀C. (A → B → C) → C). p (λa:A. λb:B. b)
+let a && b = and' a b
+let test = true' && false'
 
-let zero = ΛA. λs:(A → A). λz:A. z
-let succ = λn:(∀A. (A → A) → A → A). ΛA. λs. λz. s (n [A] s z)
+let pair = λ[A B] x y [C] (f:A → B → C). f x y
+let fst  = λ[A B] (p : [C] → (A → B → C) → C). p (λa:A. λb:B. a)
+let snd  = λ[A B] (p : [C] → (A → B → C) → C). p (λa:A. λb:B. b)
+
+let zero = λ[A] (s : A → A) (z : A). z
+let succ = λ(n : [A] → (A → A) → A → A) [A] s z. s (n [A] s z)

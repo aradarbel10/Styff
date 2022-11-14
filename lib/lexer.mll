@@ -14,6 +14,21 @@ let next_line lexbuf =
 let print_err_pos lexbuf =
   let pos = lexbuf.lex_curr_p in
   "input:" ^ string_of_int pos.pos_lnum ^ ":" ^ string_of_int (pos.pos_cnum - pos.pos_bol + 1)
+
+let classify_op (op : string) =
+  match op.[0] with
+  | ';' | '?' | ',' -> INFIXL0 op
+  | '|' -> INFIXL1 op
+  | '&' -> INFIXL2 op
+  | '#' | '$' -> INFIX3 op
+  | '=' | '<' | '>' | '~' -> INFIX4 op
+  | ':' -> INFIXR5 op
+  | '+' | '-' -> INFIXL6 op
+  | '*' | '/' | '%' -> INFIXL7 op
+  | '^' -> INFIX8 op
+  | '@' | '.' | '!' -> INFIXL9 op
+  | _ -> failwith "impossible; non operator symbol"
+
 }
 
 let alpha = ['a'-'z' 'A'-'Z']
@@ -38,10 +53,7 @@ rule read = parse
   | '*'         { STAR }
   | "lam"       { LAM }
   | "λ"         { LAM }
-  | "Lam"       { TLAM }
-  | "Λ"         { TLAM }
-  | "forall"    { FORALL }
-  | "∀"         { FORALL }
+  | '\\'        { LAM }
   | '.'         { DOT }
   | "let"       { LET }
   | '='         { EQ }
@@ -55,6 +67,7 @@ rule read = parse
   | ']'         { RBRACK }
   | ':'         { COLON }
   | ident       { IDENT (Lexing.lexeme lexbuf) }
+  | operator    { classify_op (Lexing.lexeme lexbuf) }
   | unum        { NUM (int_of_string (Lexing.lexeme lexbuf)) }
   | _           { raise (SyntaxError ("Unexpected char: " ^ Lexing.lexeme lexbuf)) }
   | eof         { EOF }
