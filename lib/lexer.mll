@@ -57,6 +57,7 @@ rule read = parse
   | '\\'        { LAM }
   | '.'         { DOT }
   | "let"       { LET }
+  | "rec"       { REC }
   | '='         { EQ }
   | "in"        { IN }
   | "->"        { ARROW }

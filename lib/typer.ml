@@ -186,15 +186,24 @@ let rec type_of (scn : scene) : rexpr -> expr * vtyp = function
   unify' scn te (VForall (x, clos));
   (Inst (e, t), capp x clos (eval scn.env t))
 
-| RLet (x, t, e, rest) ->
-  let (scn, e, te) = infer_let scn x t e in
+| RLet (rc, x, t, e, rest) ->
+  let (scn, e, te) = infer_let scn rc x t e in
   let (rest, trest) = type_of (assume scn x te) rest in
-  (Let (x, quote scn.height te, e, rest), trest)
+  (Let (rc, x, quote scn.height te, e, rest), trest)
 
 | RLit n ->
   (Lit n, VBase (type_of_lit n))
 
-and infer_let (scn : scene) (x : name) (t : rtyp option) (e : rexpr) : scene * expr * vtyp =
+and infer_let (scn : scene) (rc : bool) (x : name) (t : rtyp option) (e : rexpr) : scene * expr * vtyp =
+  (* if the binding is recursive, extend the scene with it *)
+  let scn = if rc then
+    let t_all = match t with
+    | None -> fresh scn.msk x
+    | Some t_all -> is_type scn t_all
+    in assume scn x (eval scn.env t_all)
+  else
+    scn
+  in
   let (e, te) = type_of scn e in
   begin match t with
   | Some t' ->

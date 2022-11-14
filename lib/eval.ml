@@ -101,5 +101,5 @@ let rec norm_expr (env : env) (e : expr) : expr =
     Tlam (x, norm_expr ((x, v) :: env) e)
   | App (e1, e2) -> App (norm_expr env e1, norm_expr env e2)
   | Inst (e, t) -> Inst (norm_expr env e, norm env t)
-  | Let (x, t, e, rest) -> Let (x, norm env t, norm_expr env e, norm_expr env rest)
+  | Let (rc, x, t, e, rest) -> Let (rc, x, norm env t, norm_expr env e, norm_expr env rest)
   | Lit l -> Lit l

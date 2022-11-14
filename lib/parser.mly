@@ -53,7 +53,7 @@ let applyAnnot (e : rexpr) (t : rtyp option) : rexpr =
 %token <string> INFIX8 
 %token <string> INFIXL9
 %token INFER TYPE POSTULATE
-%token LAM ARROW LPAREN RPAREN LBRACK RBRACK COLON DOT LET EQ IN HOLE
+%token LAM ARROW LPAREN RPAREN LBRACK RBRACK COLON DOT LET REC EQ IN HOLE
 %token BOOL INT TRUE FALSE STAR
 
 %nonassoc WEAK
@@ -92,9 +92,9 @@ whole:
   | stmts=list(stmt); EOF { stmts }
 
 stmt:
-  | LET; xtt=let_args; EQ; e=expr {
+  | LET; rc=option(REC); xtt=let_args; EQ; e=expr {
     let (x,teles,t) = xtt in
-    Def (x, None, unfoldLamTeles teles (applyAnnot e t))
+    Def (Option.is_some rc, x, None, unfoldLamTeles teles (applyAnnot e t))
     }
   | TYPE; x=decl_name; k=option(bind_annotk); EQ; t=typ { TDef (x, k, t) }
   | INFER; x=decl_name; EQ; e=expr { Infer (x, e) }
@@ -108,9 +108,9 @@ expr:
   (** [FUN] needs weak precedence to ensure `λx . e : t` == `λx . (e : t)`.
       similar reason for most other "big" constructs. *)
     %prec WEAK { unfoldLamTeles teles e (* RLam (x, t, e) *) }
-  | LET; xtt=let_args; EQ; e=expr; IN; r=expr %prec WEAK {
+  | LET; rc=option(REC); xtt=let_args; EQ; e=expr; IN; r=expr %prec WEAK {
     let (x,teles,t) = xtt in
-    RLet (x, None, unfoldLamTeles teles (applyAnnot e t), r)
+    RLet (Option.is_some rc, x, None, unfoldLamTeles teles (applyAnnot e t), r)
     }
   | e1=expr; op=infix_op; e2=expr { RApp (RApp (RVar op, e1), e2) }
 arg:

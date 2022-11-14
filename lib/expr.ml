@@ -29,11 +29,11 @@ type rexpr =
 | RTlam of name * rkind option * rexpr
 | RApp of rexpr * rexpr
 | RInst of rexpr * rtyp
-| RLet of name * rtyp option * rexpr * rexpr
+| RLet of bool * name * rtyp option * rexpr * rexpr
 | RLit of lit
 
 type stmt =
-| Def of name * rtyp option * rexpr
+| Def of bool * name * rtyp option * rexpr
 | TDef of name * rkind option * rtyp
 | Infer of name * rexpr
 | TInfer of name * rtyp
@@ -47,7 +47,7 @@ type expr =
 | Tlam of name * expr
 | App of expr * expr
 | Inst of expr * typ
-| Let of name * typ * expr * expr
+| Let of bool * name * typ * expr * expr
 | Lit of lit
 
 and typ =

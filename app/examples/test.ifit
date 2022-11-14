@@ -22,3 +22,7 @@ infer n = succ (succ (succ zero))
 
 postulate (+) : int → int → int
 infer five = 2 + 3
+
+postulate (-) : int → int → int
+postulate ( ** ) : int → int → int
+let rec factorial (n : int) : int = n ** factorial (n - 1)

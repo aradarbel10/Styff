@@ -56,9 +56,9 @@ and string_of_expr (nms : name list) (tps : name list) (expr : expr) : string =
   | Lam _ | Tlam _ as e -> "λ" ^ go_lam nms tps e
   | App (e1, e2) -> parens (p > 2) @@ go 2 nms tps e1 ^ " " ^ go 3 nms tps e2
   | Inst (e, t) -> parens (p > 2) @@ go 2 nms tps e ^ " [" ^ string_of_type tps t ^ "]"
-  | Let (x, t, e, rest) ->
+  | Let (rc, x, t, e, rest) ->
     parens (p > 0) @@ "let " ^ print_name x ^ " : " ^ string_of_type tps t
-    ^ " = " ^ go 0 nms (* TODO remember to change this when adding recursive binds *) tps e ^ " in " ^ go 0 (x :: nms) tps rest
+    ^ " = " ^ go 0 (if rc then x :: nms else nms) tps e ^ " in " ^ go 0 (x :: nms) tps rest
   | Lit l -> string_of_lit l
   in go 0 nms tps expr
 

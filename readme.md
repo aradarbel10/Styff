@@ -2,7 +2,7 @@
 A type checker based on system F-omega with pattern unifiction and implicit parameters
 
 ### Future Ideas
-- recursive bindings
+- allow overloading `*` (collision with kind star)
 
 - custom type formers (very simple ADTs)
 - shallow pattern matching on ADTs, possibly "real" matching too
