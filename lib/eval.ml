@@ -14,6 +14,18 @@ let rec forcek (k : kind) : kind =
     end
   | _ -> k
 
+(* NbE - Normalization by Evaluation
+   
+               eval
+  Syntax ----------------> Semantics
+  (Core) <----------------  (Values)
+              quote  
+
+normalization is only needed for types (not exprs) because
+they are what's tested for equality during unification.
+*)
+
+(* evaluation, eliminates all redexes without going under binders *)
 let rec eval (env : env) : typ -> vtyp = function
 | Arrow (lt, rt) -> VArrow (eval env lt, eval env rt)
 | TAbs (x, b) -> VAbs (x, {env = env; bdr = b})
@@ -31,9 +43,10 @@ let rec eval (env : env) : typ -> vtyp = function
   end
 | Base b -> VBase b
 
+(* eliminate a closure by evaling it under an extended env *)
 and capp (x : name) ({env = env; bdr = B b} : clos) (t : vtyp) : vtyp =
   eval ((x, t) :: env) b
-and cinst_at (hi : lvl) (x : name) (c : clos) =
+and cinst_at (hi : lvl) (x : name) (c : clos) = (* instantiate closure [c] at env of height [hi] *)
   capp x c (vqvar hi)
 and vapp (t1 : vtyp) (t2 : vtyp): vtyp =
   match force t1 with
@@ -68,7 +81,7 @@ and force (t : vtyp) : vtyp =
     end
   | _ -> t
 
-
+(* convert a value back to its normal form, including going under binders with their "actual" env *)
 let rec quote (hi : lvl) (t: vtyp) : typ =
   match force t with
 | VArrow (lt, rt) -> Arrow (quote hi lt, quote hi rt)
@@ -88,10 +101,12 @@ and quote_clos (hi : lvl) (x : name) (c : clos) : bdr =
   let bdr = quote (inc hi) bod in
   B bdr
 
+(* evaling and quoteing = normalizing *)
 let norm (env : env) (t : typ) : typ =
   let vt = eval env t in
   quote (Lvl (List.length env)) vt
 
+(* normalize each type in the expression (not the expression itself) *)
 let rec norm_expr (env : env) (e : expr) : expr =
   match e with
   | Var i -> Var i

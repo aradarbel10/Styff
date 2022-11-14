@@ -5,6 +5,7 @@ open Expr
 open Eval
 open Unif
 
+(* source of fresh unification variables, mutable counter is hidden *)
 module Fresh : sig
   val uniquei : int
   val freshen : name -> name
@@ -19,6 +20,13 @@ end = struct
 end
 open Fresh
 
+(* all typechecking occurs inside a [scene]:
+
+   ctx - maps variables to types
+   tctx - maps type variables to kinds 
+   env - maps type variables to values
+   msk - tells which type variables are bound
+   height - length of tctx, stored separately to avoid re-calculation *)
 type ctx = (name * vtyp) list
 type tctx = (name * kind) list
 type scene = {
@@ -61,6 +69,7 @@ exception Unexpected of typ
 exception NoFirstClassTypes of name
 exception UnexpectedHigherKind
 
+(* wrapper for [unify] to catch errors *)
 let unify' (scn : scene) (t : vtyp) (t' : vtyp) =
   try unify scn.height t t' with
   | Ununifiable ->
@@ -73,9 +82,11 @@ let type_of_lit : lit -> base = function
 | `Int _ -> `Int
 | `Bool _ -> `Bool
 
+(* construct a closure around a value *)
 let clos_of (scn : scene) (t : vtyp) : clos =
   {env = scn.env; bdr = B (quote (inc scn.height) t)}
 
+(* to allow implicit instantiation, we sometimes insert an application for the user *)
 let insert (scn : scene) (e, t : expr * vtyp) : expr * vtyp =
   match force t with
   | VForall (x, bod) ->
@@ -88,10 +99,17 @@ let insert_unless (scn : scene) (e, t : expr * vtyp) : expr * vtyp =
   | Tlam _ -> (e, t)
   | _ -> insert scn (e, t)
 
+(* embed raw language kinds ↪ core language kinds *)
 let rec lower_kind : rkind -> kind = function
 | RStar -> Star
 | RKArrow (lk, rk) -> KArrow (lower_kind lk, lower_kind rk)
 
+(* elaboration:
+   opposed to plain type checking/inference, we want to translate
+   the raw language to a more explicit core language.
+*)
+
+(* given a type, return its core representation and infer its kind *)
 let rec kind_of (scn : scene) : rtyp -> typ * kind = function
 | RArrow (lt, rt) -> (Arrow (is_type scn lt, is_type scn rt), Star)
 | RBase b -> (Base b, Star)
@@ -134,7 +152,7 @@ and infer_let_type (scn : scene) (x : name) (_ : rkind option) (t : rtyp) : scen
   let vt = eval scn.env t in
   (define_typ scn x vt k, t, vt, k)
 
-
+(* given an expression, return its core representation and infer its type *)
 let rec type_of (scn : scene) : rexpr -> expr * vtyp = function
 | RAnn (e, t) ->
   let (e, te) = insert_unless scn @@ type_of scn e in

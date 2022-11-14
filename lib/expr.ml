@@ -8,6 +8,7 @@ type lit = [`Int of int | `Bool of bool]
 type idx = Idx of int
 type lvl = Lvl of int
 
+(* raw language, parser's output *)
 type rkind =
 | RStar
 | RKArrow of rkind * rkind
@@ -40,7 +41,10 @@ type stmt =
 | Postulate of name * rtyp
 type prog = stmt list
 
+(* core language, typechecker's output
 
+   uses debruijn indices to trivialize α-equivalence
+*)
 type expr =
 | Var of idx
 | Lam of name * typ * expr
@@ -63,6 +67,14 @@ and typ =
 and bdr = B of typ
 and mask = bool list (* true -- bound ;; false -- unbound *)
 
+(* semantic domain (values), used for normalization
+
+   uses debruijn levels to trivialize weakening,
+   has no β-redexes so β-equality is easy (during unification)
+
+   subdomain: "neutrals" - values where computation is stuck on a variable
+                           represented in spine form.
+*)
 and vtyp =
 | VArrow of vtyp * vtyp
 | VAbs of name * clos
@@ -77,6 +89,7 @@ and head =
 | VTvar of tvar uref
 and spine = vtyp list
 and clos = {env : env; bdr : bdr}
+(* types in the environment are stored as values, signifies "these are already normalized! just unpack them with [quote]" *)
 and env = (name * vtyp) list
 
 and kind =

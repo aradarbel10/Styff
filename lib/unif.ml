@@ -2,6 +2,8 @@ open Batteries.Uref
 open Expr
 open Eval
 
+(* contextual metavariables: metavars live in toplevel and may depend on names in their occurance's context
+  when solving a metavar, we need to rename those names to toplevel *)
 type partial_renaming = {
   dom : lvl;
   cod : lvl;
@@ -16,6 +18,9 @@ exception NonLinearSpine
 exception OccursError
 exception IllScopedSpine
 
+(* since hihger order unification is undecidable,
+   we stick to the "pattern fragment" where equations can be solved easily by inversion.
+   this happens when the spine contains only vars and is linear. *)
 let rec invert (hi : lvl) : spine -> partial_renaming = function
 | [] -> { dom = Lvl 0; cod = hi; ren = [] }
 | (t' :: sp) ->
@@ -27,6 +32,8 @@ let rec invert (hi : lvl) : spine -> partial_renaming = function
     end
   | _ -> raise NonVarInSpine
 
+(* for maximum efficiency, we combine into the same function:
+   apply renaming, quoting, occurs check *)
 let rec rename (r : partial_renaming) (t : vtyp) (tv' : tvar uref) : typ =
   match force t with
   | VNeut (hd, sp) ->
@@ -58,6 +65,8 @@ exception Ununifiable
 exception DifferentSpineLength
 exception UnunifiableKinds
 
+(* we encode contextual metas using type-level abstractions.
+   this converts an (open) rhs to a closed term by wrapping it with abs *)
 let rec close (Lvl i : lvl) (t : typ) : typ =
   if i < 0
     then raise (Invalid_argument "can't wrap negative lambdas")
@@ -72,6 +81,8 @@ let solve (hi : lvl) (tv : tvar uref) (sp : spine) (t : vtyp) : unit =
   let sol = eval [] (close ren.dom rhs) in
   uset tv (Solved sol)
 
+(* confirm two types are equal, solve metavars along the way if needed.
+   thanks to NbE we don't need to worry about a complicated equational theory. *)
 let rec unify (hi : lvl) (typ : vtyp) (typ' : vtyp) : unit =
   match force typ, force typ' with
   | VNeut (VTvar tv, sp), VNeut (VTvar tv', sp') when tv = tv' -> unify_spines hi sp sp'
