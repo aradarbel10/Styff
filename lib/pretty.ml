@@ -3,10 +3,10 @@ open Expr
 open Eval
 
 let string_of_base : base -> string = function
-| `Nat -> "nat"
+| `Int -> "int"
 | `Bool -> "bool"
 let string_of_lit : lit -> string = function
-| `Nat n -> string_of_int n
+| `Int n -> string_of_int n
 | `Bool true -> "true"
 | `Bool false -> "false"
 

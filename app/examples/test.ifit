@@ -1,5 +1,5 @@
-let id [A] (a:A) = a
-let const [A B] (a:A) (b:B) = a
+let id [A] (a:A) : A = a
+let const [A B] (a:A) (b:B) : A = a
 
 type bool' = [A] → A → A → A
 
@@ -18,3 +18,7 @@ let snd  = λ[A B] (p : [C] → (A → B → C) → C). p (λa:A. λb:B. b)
 
 let zero = λ[A] (s : A → A) (z : A). z
 let succ = λ(n : [A] → (A → A) → A → A) [A] s z. s (n [A] s z)
+infer n = succ (succ (succ zero))
+
+postulate (+) : int → int → int
+infer five = 2 + 3

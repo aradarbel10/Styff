@@ -2,8 +2,8 @@ open Batteries.Uref
 
 type name = string
 
-type base = [`Nat | `Bool]
-type lit = [`Nat of int | `Bool of bool]
+type base = [`Int | `Bool]
+type lit = [`Int of int | `Bool of bool]
 
 type idx = Idx of int
 type lvl = Lvl of int
@@ -37,6 +37,7 @@ type stmt =
 | TDef of name * rkind option * rtyp
 | Infer of name * rexpr
 | TInfer of name * rtyp
+| Postulate of name * rtyp
 type prog = stmt list
 
 

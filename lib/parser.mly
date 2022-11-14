@@ -52,9 +52,9 @@ let applyAnnot (e : rexpr) (t : rtyp option) : rexpr =
 %token <string> INFIXL7
 %token <string> INFIX8 
 %token <string> INFIXL9
-%token INFER TYPE
+%token INFER TYPE POSTULATE
 %token LAM ARROW LPAREN RPAREN LBRACK RBRACK COLON DOT LET EQ IN HOLE
-%token BOOL NAT TRUE FALSE STAR
+%token BOOL INT TRUE FALSE STAR
 
 %nonassoc WEAK
 %nonassoc COLON
@@ -94,11 +94,12 @@ whole:
 stmt:
   | LET; xtt=let_args; EQ; e=expr {
     let (x,teles,t) = xtt in
-    Def (x, None, applyAnnot (unfoldLamTeles teles e) t)
+    Def (x, None, unfoldLamTeles teles (applyAnnot e t))
     }
-  | TYPE; x=IDENT; k=option(bind_annotk); EQ; t=typ { TDef (x, k, t) }
-  | INFER; x=IDENT; EQ; e=expr { Infer (x, e) }
-  | INFER; TYPE; x=IDENT; EQ; t=typ { TInfer (x, t) }
+  | TYPE; x=decl_name; k=option(bind_annotk); EQ; t=typ { TDef (x, k, t) }
+  | INFER; x=decl_name; EQ; e=expr { Infer (x, e) }
+  | INFER; TYPE; x=decl_name; EQ; t=typ { TInfer (x, t) }
+  | POSTULATE; x=decl_name; COLON; t=typ { Postulate (x, t) }
 
 expr:
   | f=e_atom; es=list(arg) { unfoldApp f es }
@@ -109,7 +110,7 @@ expr:
     %prec WEAK { unfoldLamTeles teles e (* RLam (x, t, e) *) }
   | LET; xtt=let_args; EQ; e=expr; IN; r=expr %prec WEAK {
     let (x,teles,t) = xtt in
-    RLet (x, None, applyAnnot (unfoldLamTeles teles e) t, r)
+    RLet (x, None, unfoldLamTeles teles (applyAnnot e t), r)
     }
   | e1=expr; op=infix_op; e2=expr { RApp (RApp (RVar op, e1), e2) }
 arg:
@@ -135,7 +136,7 @@ bind_annot:
 e_atom:
   | x=IDENT { RVar x }
   | LPAREN; e=expr; RPAREN { e }
-  | n=NUM { RLit (`Nat n) }
+  | n=NUM { RLit (`Int n) }
   | TRUE { RLit (`Bool true) }
   | FALSE { RLit (`Bool false) }
 
@@ -166,7 +167,7 @@ t_atom:
   | x=IDENT { RQvar x }
   | LPAREN; t=typ; RPAREN { t }
   | BOOL { RBase `Bool }
-  | NAT  { RBase `Nat  }
+  | INT  { RBase `Int  }
   | HOLE { RHole }
 
 kind:

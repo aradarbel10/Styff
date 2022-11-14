@@ -70,7 +70,7 @@ let unify' (scn : scene) (t : vtyp) (t' : vtyp) =
     raise (Failure ("unable to unify " ^ str ^ " ~/~ " ^ str'))
 
 let type_of_lit : lit -> base = function
-| `Nat _ -> `Nat
+| `Int _ -> `Int
 | `Bool _ -> `Bool
 
 let clos_of (scn : scene) (t : vtyp) : clos =

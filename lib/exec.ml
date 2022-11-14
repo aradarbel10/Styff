@@ -29,6 +29,10 @@ let exec_stmt (scn : scene) (s : stmt) : scene =
     print_endline ("infer type " ^ x ^ "\n\t : " ^
       string_of_kind kt);
     scn
+  | Postulate (x, t) ->
+    let (t, _) = kind_of scn t in
+    let vt = eval scn.env t in
+    assume scn x vt
 
 let exec_prog_str (str : string) : unit =
   let p = Result.get_ok @@ parse_str str in

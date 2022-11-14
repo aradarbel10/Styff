@@ -45,11 +45,12 @@ rule read = parse
   | newline     { next_line lexbuf; read lexbuf }
   | "(*"        { read_comment lexbuf }
   | "infer"     { INFER }
+  | "postulate" { POSTULATE }
   | "type"      { TYPE }
   | "bool"      { BOOL }
   | "true"      { TRUE }
   | "false"     { FALSE }
-  | "nat"       { NAT }
+  | "int"       { INT }
   | '*'         { STAR }
   | "lam"       { LAM }
   | "λ"         { LAM }

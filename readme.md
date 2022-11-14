@@ -2,8 +2,6 @@
 A type checker based on system F-omega with pattern unifiction and implicit parameters
 
 ### Future Ideas
-- postulates
-- built ins (if-then-else, numeric ops)
 - recursive bindings
 
 - custom type formers (very simple ADTs)
