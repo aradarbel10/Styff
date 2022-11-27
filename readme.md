@@ -16,20 +16,22 @@ A type checker based on system F-omega with pattern unifiction and implicit para
     - GADT syntax
     - shallow pattern matching
         - scoped type variables
-        - matching on indexed types (super scuffed implementation. no coverage checking, no escape checking, no linearity checking, do not trust until rewrite)
+        - matching on indexed types
 - user-defined infix operator
     - infix type formers (but no constructors yet)
 
-### Future Ideas
-- allow overloading `*` (collision with kind star)
+### Future Ideas/TODOs
+- pattern match coverage check
+- pattern match escape checking on existentials
+
 - bring back `∀` syntax sugar
 
 - error reporting
     - from parsing
     - from typechecking
+- logging (for debugging and good errors)
 
 - annotate core types with kinds
-- check with bidi to accept more programs
 - small & super simple module system and stdlib
 
 - backend

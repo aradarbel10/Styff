@@ -7,12 +7,12 @@ open Scene
 
 let exec_stmt (scn : scene) (s : stmt) : scene =
   match s with
-  | Def (rc, x, t, e) ->
-    let (scn', e, t) = infer_let scn rc x t e in
+  | Def (rc, x, ps, t, e) ->
+    let (scn', scn, e, t) = infer_let scn rc x ps t e in
     let e = norm_expr scn.env e in
     print_endline ("let " ^ x ^ "\n\t : " ^
       string_of_vtype (tps scn) t ^ "\n\t = " ^
-      string_of_expr (if rc then x :: (names scn) else (names scn)) (tps scn) e);
+      string_of_expr (names scn) (tps scn) e);
     scn'
   | TDef (x, k, t) ->
     let (scn', _, vt, k) = infer_let_type scn x k t in

@@ -31,10 +31,13 @@ let rec unfoldLamTeles (teles : (name list * annotation) list) (e : rexpr) : rex
     let e' = unfoldLamTeles teles e in
     unfoldLamTele tele e'
 
-let applyAnnot (e : rexpr) (t : rtyp option) : rexpr =
-  match t with
-  | None -> e
-  | Some t -> RAnn (e, t)
+let rec joinTele : name list * annotation -> rparam list = function
+| [], _ -> []
+| x::xs, TypeAnnot t -> RParam  (x, t) :: joinTele (xs, TypeAnnot t)
+| x::xs, KindAnnot k -> RTParam (x, k) :: joinTele (xs, KindAnnot k)
+
+let joinTeles : (name list * annotation) list -> rparam list =
+  fun teles -> List.concat @@ List.map joinTele teles
 
 %}
 
@@ -94,7 +97,7 @@ whole:
 stmt:
   | LET; rc=option(REC); xtt=let_args; EQ; e=expr {
     let (x,teles,t) = xtt in
-    Def (Option.is_some rc, x, None, unfoldLamTeles teles (applyAnnot e t))
+    Def (Option.is_some rc, x, joinTeles teles, t, e)
     }
   | TYPE; x=decl_name; k=option(bind_annotk); EQ; t=typ { TDef (x, k, t) }
   | INFER; x=decl_name; EQ; e=expr { Infer (x, e) }
@@ -111,7 +114,7 @@ expr:
     %prec WEAK { unfoldLamTeles teles e (* RLam (x, t, e) *) }
   | LET; rc=option(REC); xtt=let_args; EQ; e=expr; IN; r=expr %prec WEAK {
     let (x,teles,t) = xtt in
-    RLet (Option.is_some rc, x, None, unfoldLamTeles teles (applyAnnot e t), r)
+    RLet (Option.is_some rc, x, joinTeles teles, t, e, r)
     }
   | e1=expr; op=infix_op; e2=expr { RApp (RApp (RVar op, e1), e2) }
 arg:

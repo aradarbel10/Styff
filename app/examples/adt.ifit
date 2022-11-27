@@ -10,8 +10,7 @@ data List : ∗ → ∗ where
 
 let nums : List Nat = zero :: succ zero :: succ (succ zero) :: three :: nil
 
-
-(* EXPERIMENTAL pattern matching *)
+(* pattern matching *)
 let rec nat_add (a : Nat) (b : Nat) : Nat =
   match a with
   | zero . b
@@ -20,6 +19,17 @@ let rec nat_add (a : Nat) (b : Nat) : Nat =
 
 let rec list_concat [T : ∗] (xs : List T) (ys : List T) : List T =
   match xs with
-  | nil [S] . ys
-  | (::) [S] x xs' . x :: list_concat xs' ys
+  | nil . ys
+  | x :: xs' . x :: list_concat xs' ys
+  end
+
+(* GADTs *)
+data T : ∗ → ∗ where
+| T1 : [a] → a → T a
+| T2 : int → T bool
+
+let useT [b : ∗] (t : T b) : b =
+  match t with
+  | T1 x . x
+  | T2 n . true
   end

@@ -10,19 +10,6 @@ let local_unify (t : vtyp) (t' : vtyp) (scn : scene) : scene =
   let env = ref (scn.env) in
   unify scn.height (Local env) t t';
   {scn with env = !env}
-  (*
-  let env_metas = List.map2 entry_to_tvar scn.env scn.msk in
-  let t  = eval scn.env t  in
-  let t' = eval scn.env t' in
-  unify (Lvl (List.length env_metas)) Local t t';
-  let nms = List.map fst env_metas in
-  let (env', msk') = unzip @@ List.map (fun (x, t) -> tvar_to_entry (Lvl (level_of x nms)) (x, t)) env_metas in
-  {scn with env = env'; msk = msk'}
-  - turn env to metas (bound ↦ unsolved, unbound (has value) ↦ solved)
-  - (might not be needed) normalize/apply the change to env to the terms themselves
-  - use regular unification (has access to env, thus prev step might not be needed)
-  - convert metas back to a regular env
-  *)
 
 exception UndefinedCtor
 exception TooManyArgsInPattern
@@ -75,7 +62,7 @@ let norm_branch_scn (PCtor (_, args) : pattern) (scn : scene) : scene =
       | [] -> failwith "absurd!"
       | (x, t) :: ctx ->
         let ctx = go ctx env args in
-        let t = eval env (quote (Lvl (List.length env)) t) in
+        let t = eval env (quote (height env) t) in
         (x, t) :: ctx
       end
     | PTvar _ :: args ->
@@ -86,3 +73,8 @@ let norm_branch_scn (PCtor (_, args) : pattern) (scn : scene) : scene =
   in
   let ctx = go scn.ctx scn.env args in
   {scn with ctx = ctx}
+
+let scene_of_pattern (scn : scene) (scrut_typ : vtyp) (pat : pattern) : pattern * scene =
+  let (scn, pat, pat_typ) = insert_pattern @@ infer_pattern scn pat in
+  let scn = norm_branch_scn pat @@ local_unify pat_typ scrut_typ scn in
+  (pat, scn)

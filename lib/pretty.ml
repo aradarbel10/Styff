@@ -42,8 +42,7 @@ let rec string_of_type (nms : name list) (t : typ) : string =
     | _ -> raise (Failure "impossible - can't print ill-lengthed inserted meta")
   in go 0 nms t
 and string_of_vtype (nms : name list) (t : vtyp) : string =
-  let hi = Lvl (List.length nms) in
-  let t = quote hi t in
+  let t = quote (height nms) t in
   string_of_type nms t
 
 and string_of_expr (nms : name list) (tps : name list) (expr : expr) : string =

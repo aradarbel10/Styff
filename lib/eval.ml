@@ -74,13 +74,14 @@ and app_spine (t : vtyp) (sp : spine) : vtyp =
   | arg :: sp -> vapp (app_spine t sp) arg
 
 and force (t : vtyp) : vtyp =
-  match t with
+  begin match t with
   | VNeut (VTvar tv, sp) ->
     begin match uget tv with
     | Solved t' -> force (app_spine t' sp)
     | _ -> t
     end
   | _ -> t
+  end
 
 (* convert a value back to its normal form, including going under binders with their "actual" env *)
 let rec quote (hi : lvl) (t: vtyp) : typ =
@@ -103,9 +104,9 @@ and quote_clos (hi : lvl) (x : name) (c : clos) : bdr =
   B bdr
 
 (* evaling and quoteing = normalizing *)
-let norm (env : env) (t : typ) : typ =
-  let vt = eval env t in
-  quote (Lvl (List.length env)) vt
+let norm (env : env) (t : typ) : typ = quote (height env) (eval env t)
+(* usually values are already normalized, but we want to re-norm after the environment is refined (to open definitions) *)
+let vnorm (env : env) (t : vtyp) : vtyp = eval env (quote (height env) t)
 
 (* normalize each type in the expression (not the expression itself) *)
 let rec norm_expr (env : env) (e : expr) : expr =
@@ -113,7 +114,7 @@ let rec norm_expr (env : env) (e : expr) : expr =
   | Var i -> Var i
   | Lam (x, t, e) -> Lam (x, norm env t, norm_expr env e)
   | Tlam (x, e) ->
-    let v = vqvar (Lvl (List.length env)) in
+    let v = vqvar (height env) in
     Tlam (x, norm_expr ((x, `EUnsolved, `EBound, v) :: env) e)
   | App (e1, e2) -> App (norm_expr env e1, norm_expr env e2)
   | Inst (e, t) -> Inst (norm_expr env e, norm env t)
@@ -126,7 +127,7 @@ and norm_branch (env : env) (((PCtor (_, args) as pat), bod) : pattern * expr) :
     | [] -> env
     | PVar  _ :: args -> env_of_pattern args env
     | PTvar x :: args -> 
-      let v = vqvar (Lvl (List.length env)) in
+      let v = vqvar (height env) in
       (x, `EUnsolved, `EBound, v) :: env_of_pattern args env
     end
   in

@@ -22,7 +22,10 @@ type rtyp =
 | RForall of name * rtyp
 | RBase of base
 | RHole
-  
+
+type rparam =
+| RParam of name * rtyp option
+| RTParam of name * rkind option
 type pat_arg =
 | PVar of name
 | PTvar of name
@@ -35,14 +38,14 @@ type rexpr =
 | RTlam of name * rkind option * rexpr
 | RApp of rexpr * rexpr
 | RInst of rexpr * rtyp
-| RLet of bool * name * rtyp option * rexpr * rexpr
+| RLet of bool * name * rparam list * rtyp option * rexpr * rexpr
 | RMatch of rexpr * (pattern * rexpr) list
 | RLit of lit
 
 type rctor = Ctor of {nam : name; t : rtyp}
 
 type stmt =
-| Def of bool * name * rtyp option * rexpr
+| Def of bool * name * rparam list * rtyp option * rexpr
 | TDef of name * rkind option * rtyp
 | Infer of name * rexpr
 | TInfer of name * rtyp
@@ -132,6 +135,7 @@ let unLvl (Lvl i) = i
 let inc (Lvl i) = Lvl (i + 1)
 let lvl2idx (Lvl hi : lvl) (Lvl i) = Idx (hi - i - 1)
 let lookup (Idx i) (env : env) = List.nth_opt env i
-let lookup_lvl (i : lvl) (env : env) = lookup (lvl2idx (Lvl (List.length env)) i) env
+let height env : lvl = Lvl (List.length env)
+let lookup_lvl (i : lvl) (env : env) = lookup (lvl2idx (height env) i) env
 
 let vqvar (i : lvl) : vtyp = VNeut (VQvar i, [])

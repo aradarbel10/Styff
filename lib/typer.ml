@@ -104,6 +104,13 @@ and is_type (scn : scene) (t : rtyp) : typ =
   let (t, k) = kind_of scn t in
   unify_kinds k Star;
   t
+and maybe_rtyp (scn : scene) (x : name) : rtyp option -> typ = function
+| Some t -> is_type scn t
+| None -> fresh (mask_of scn) (freshen x)
+and maybe_rkind (x : name) : rkind option -> kind = function
+| Some k -> lower_kind k
+| None -> freshk (freshen x)
+
 and infer_let_type (scn : scene) (x : name) (_ : rkind option) (t : rtyp) : scene * typ * vtyp * kind =
   let (t, k) = kind_of scn t in
   let vt = eval scn.env t in
@@ -145,10 +152,16 @@ let rec infer (scn : scene) : rexpr -> expr * vtyp = function
 
 | RApp (e1, e2) ->
   let (e1, te1) = insert scn @@ infer scn e1 in
-  let (e2, te2) = insert_unless scn @@ infer scn e2 in
-  let ret = eval scn.env (fresh (mask_of scn) "r") in
-  unify' scn te1 (VArrow (te2, ret));
-  (App (e1, e2), ret)
+  let (lt, rt) = begin match force te1 with
+  | VArrow (lt, rt) -> (lt, rt)
+  | te1 ->
+    let lt = eval scn.env (fresh (mask_of scn) "l") in
+    let rt = eval scn.env (fresh (mask_of scn) "r") in
+    unify' scn te1 (VArrow (lt, rt));
+    (lt, rt)
+  end in
+  let e2 = check scn e2 lt in
+  (App (e1, e2), rt)
 
 | RInst (e, t) ->
   let (e, te) = infer scn e in
@@ -161,8 +174,8 @@ let rec infer (scn : scene) : rexpr -> expr * vtyp = function
   unify' scn te (VForall (x, clos));
   (Inst (e, t), capp x clos (eval scn.env t))
 
-| RLet (rc, x, t, e, rest) ->
-  let (scn, e, te) = infer_let scn rc x t e in
+| RLet (rc, x, ps, t, e, rest) ->
+  let (scn, _, e, te) = infer_let scn rc x ps t e in
   let (rest, trest) = infer (assume scn x te) rest in
   (Let (rc, x, quote scn.height te, e, rest), trest)
 
@@ -176,31 +189,83 @@ let rec infer (scn : scene) : rexpr -> expr * vtyp = function
 | RLit n ->
   (Lit n, VBase (infer_lit n))
 
-and infer_let (scn : scene) (rc : bool) (x : name) (t : rtyp option) (e : rexpr) : scene * expr * vtyp =
+and check (scn : scene) (e : rexpr) (t : vtyp) : expr = match e, force t with
+| RLam (x, Some xt, e), VArrow (lt, rt) ->
+  let xt = eval scn.env (is_type scn xt) in
+  unify' scn xt lt;
+  check scn (RLam (x, None, e)) (VArrow (lt, rt))
+  
+| RLam (x, None, e), VArrow (lt, rt) ->
+  let e = check (assume scn x lt) e rt in
+  Lam (x, quote scn.height lt, e)
+
+| RTlam (x, Some _, e), VForall (x', c) ->
+  (*todo unify k with the kind of x'*)
+  check scn (RTlam (x, None, e)) (VForall (x', c))
+
+| RTlam (x, None, e), VForall (x', c) ->
+  let ret_typ = cinst_at scn.height x' c in
+  let e = check (assume_typ scn x Star (*todo kind annotation on x'*) `EUnsolved) e ret_typ in
+  Tlam (x, e)
+
+| RLet (rc, x, ps, t, e, rest), t_rest ->
+  let (scn, _, e, te) = infer_let scn rc x ps t e in
+  let rest = check scn rest t_rest in
+  Let (rc, x, quote scn.height te, e, rest)
+
+| RMatch (scrut, branches), ret_typ ->
+  let (scrut, scrut_typ) = infer scn scrut in
+  let branch_typs = List.map (fun (pat, branch) -> check_branch scn scrut_typ pat branch ret_typ) branches in
+  Match (scrut, branch_typs)
+  
+| e, actual_t ->
+  let (e, expected_t) = insert_unless scn @@ infer scn e in
+  unify' scn expected_t actual_t;
+  e
+
+(* given a scene, a list of parameters, and a return type, return
+- a new scene, with the bound params in scope
+- the whole type of the function being defined
+- just the return type of the function being defined (evaluated under the new scene)
+*)
+and process_params (scn : scene) (ps : rparam list) (ret_typ : rtyp option) : scene * typ * vtyp =
+  match ps with
+  | [] ->
+    let ret_typ = maybe_rtyp scn "ret" ret_typ in
+    (scn, ret_typ, eval scn.env ret_typ)
+  | RParam (x, t) :: ps ->
+    let t = maybe_rtyp scn x t in
+    let scn = assume scn x (eval scn.env t) in
+    let (scn, all_typ, ret_typ) = process_params scn ps ret_typ in
+    (scn, Arrow (t, all_typ), ret_typ)
+  | RTParam (x, k) :: ps ->
+    let k = maybe_rkind x k in
+    let scn = assume_typ scn x k `EUnsolved in
+    let (scn, all_typ, ret_typ) = process_params scn ps ret_typ in
+    (scn, Forall (x, B all_typ), ret_typ)
+
+and scene_of_let (scn : scene) (rc : bool) (x : name) (ps : rparam list) (ret_typ : rtyp option) : scene * vtyp * vtyp =
+  let (inner_scn, all_typ, ret_typ) = process_params scn ps ret_typ in
+  let all_typ = eval scn.env all_typ in
+  let inner_scn = if rc then assume inner_scn x all_typ else inner_scn in
+  (inner_scn, all_typ, ret_typ)
+
+and infer_let (scn : scene) (rc : bool) (x : name) (ps : rparam list) (t : rtyp option) (e : rexpr) : scene * scene * expr * vtyp =
   (* if the binding is recursive, extend the scene with it *)
-  let scn = if rc then
-    let t_all = match t with
-    | None -> fresh (mask_of scn) x
-    | Some t_all -> is_type scn t_all
-    in assume scn x (eval scn.env t_all)
-  else
-    scn
-  in
-  let (e, te) = infer scn e in
-  begin match t with
-  | Some t' ->
-    let t' = eval scn.env (is_type scn t') in
-    unify' scn te t'
-  | None -> ()
-  end;
-  (assume scn x te, e, te)
+  let (inner_scn, all_typ, ret_typ) = scene_of_let scn rc x ps t in
+  let e = check inner_scn e ret_typ in
+  (assume scn x all_typ, inner_scn, e, all_typ)
 
 and infer_branch (scn : scene) (scrut_typ : vtyp) (pat : pattern) (branch : rexpr) : pattern * expr * vtyp =
-  let (scn, pat, pat_typ) = infer_pattern scn pat in
-  let scn = norm_branch_scn pat @@ local_unify pat_typ scrut_typ scn in
+  let (pat, scn) = scene_of_pattern scn scrut_typ pat in
   let (branch, branch_typ) = infer scn branch in
   (pat, branch, branch_typ)
 
+and check_branch (scn : scene) (scrut_typ : vtyp) (pat : pattern) (branch : rexpr) (ret_typ : vtyp) : pattern * expr =
+  let (pat, scn) = scene_of_pattern scn scrut_typ pat in
+  let ret_typ = vnorm scn.env ret_typ in
+  let branch = check scn branch ret_typ in
+  (pat, branch)
 
 (* get the last type in a chain of arrows (including foralls) *)
 let rec return_type (hi : lvl) : vtyp -> vtyp = function
