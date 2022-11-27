@@ -3,6 +3,7 @@ open Expr
 open Lexer
 open Pretty
 open Eval
+open Scene
 
 let exec_stmt (scn : scene) (s : stmt) : scene =
   match s with
@@ -20,7 +21,7 @@ let exec_stmt (scn : scene) (s : stmt) : scene =
       string_of_vtype (tps scn) vt);
     scn'
   | Infer (x, e) ->
-    let (_, te) = type_of scn e in
+    let (_, te) = infer scn e in
     print_endline ("infer " ^ x ^ "\n\t : " ^
       string_of_vtype (tps scn) te);
     scn
@@ -33,6 +34,10 @@ let exec_stmt (scn : scene) (s : stmt) : scene =
     let (t, _) = kind_of scn t in
     let vt = eval scn.env t in
     assume scn x vt
+  | DataDecl (x, k, ctors) ->
+    let scn = declare_data scn x k ctors in
+    print_endline ("declared data " ^ x);
+    scn
 
 let exec_prog_str (str : string) : unit =
   let p = Result.get_ok @@ parse_str str in

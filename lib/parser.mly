@@ -52,7 +52,7 @@ let applyAnnot (e : rexpr) (t : rtyp option) : rexpr =
 %token <string> INFIXL7
 %token <string> INFIX8 
 %token <string> INFIXL9
-%token INFER TYPE POSTULATE
+%token INFER TYPE POSTULATE DATA WHERE PIPE MATCH WITH END
 %token LAM ARROW LPAREN RPAREN LBRACK RBRACK COLON DOT LET REC EQ IN HOLE
 %token BOOL INT TRUE FALSE STAR
 
@@ -100,6 +100,7 @@ stmt:
   | INFER; x=decl_name; EQ; e=expr { Infer (x, e) }
   | INFER; TYPE; x=decl_name; EQ; t=typ { TInfer (x, t) }
   | POSTULATE; x=decl_name; COLON; t=typ { Postulate (x, t) }
+  | d=data_decl { d }
 
 expr:
   | f=e_atom; es=list(arg) { unfoldApp f es }
@@ -139,6 +140,7 @@ e_atom:
   | n=NUM { RLit (`Int n) }
   | TRUE { RLit (`Bool true) }
   | FALSE { RLit (`Bool false) }
+  | MATCH; e=e_atom; WITH; bs=list(branch); END { RMatch (e, bs) }
 
 %inline decl_name:
   | x=IDENT { x }
@@ -175,3 +177,20 @@ kind:
   | lk=kind; ARROW; rk=kind { RKArrow (lk, rk) }
 bind_annotk:
   | COLON; k=kind { k }
+
+
+data_decl:
+  | DATA; x=decl_name; k=option(bind_annotk); WHERE; cs=list(ctor_decl)
+    { DataDecl (x, k, cs) }
+ctor_decl:
+  | PIPE; x=decl_name; COLON; t=typ
+    { Ctor {nam = x; t = t} }
+
+branch:
+  | PIPE; p=pattern; DOT; e=expr { (p, e) }
+pattern:
+  | ctor=decl_name; args=list(pattern_arg); { PCtor (ctor, List.rev args) }
+  | lhs=IDENT; op=infix_op; rhs=IDENT { PCtor (op, [PVar rhs; PVar lhs]) }
+pattern_arg:
+  | v=IDENT { PVar v }
+  | LBRACK; v=IDENT; RBRACK { PTvar v }

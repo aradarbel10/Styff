@@ -37,8 +37,8 @@ let rec string_of_type (nms : name list) (t : typ) : string =
   and go_inserted (p : int) (nms : name list) (tv : tvar uref) (msk : mask) =
     match nms, msk with
     | [], [] -> go p nms (Tvar tv)
-    | x :: nms, true  :: msk -> parens (p > 2) @@ go_inserted 2 nms tv msk ^ " " ^ print_name x
-    | _ :: nms, false :: msk -> go_inserted 2 nms tv msk
+    | x :: nms, `EBound :: msk -> parens (p > 2) @@ go_inserted 2 nms tv msk ^ " " ^ print_name x
+    | _ :: nms, `EDefed :: msk -> go_inserted 2 nms tv msk
     | _ -> raise (Failure "impossible - can't print ill-lengthed inserted meta")
   in go 0 nms t
 and string_of_vtype (nms : name list) (t : vtyp) : string =
@@ -51,6 +51,15 @@ and string_of_expr (nms : name list) (tps : name list) (expr : expr) : string =
   | Lam (x, t, e) -> "(" ^ print_name x ^ " : " ^ string_of_type tps t ^ ") " ^ go_lam (x :: nms) tps e
   | Tlam (x, e) -> "[" ^ print_name x ^ "] " ^ go_lam nms (x :: tps) e
   | e -> ". " ^ go 0 nms tps e
+  and go_branch (nms : name list) (tps : name list) (((PCtor (_, args) as pat), bod) : pattern * expr) : string =
+    let nms = List.fold_left (fun nms -> function | PVar  v -> v :: nms | _ -> nms) nms args in
+    let tps = List.fold_left (fun tps -> function | PTvar v -> v :: tps | _ -> tps) tps args in
+    go_pat pat ^ " . " ^ go 0 nms tps bod
+  and go_pat (PCtor (ctor, args)) : string =
+    match args with
+    | [] -> ctor
+    | PVar  v :: args -> go_pat (PCtor (ctor, args)) ^ " " ^ v
+    | PTvar v :: args -> go_pat (PCtor (ctor, args)) ^ " [" ^ v ^ "]"
   and go (p : int) (nms : name list) (tps : name list) = function
   | Var (Idx i) -> print_name (List.nth nms i)
   | Lam _ | Tlam _ as e -> "λ" ^ go_lam nms tps e
@@ -59,8 +68,13 @@ and string_of_expr (nms : name list) (tps : name list) (expr : expr) : string =
   | Let (rc, x, t, e, rest) ->
     parens (p > 0) @@ "let " ^ print_name x ^ " : " ^ string_of_type tps t
     ^ " = " ^ go 0 (if rc then x :: nms else nms) tps e ^ " in " ^ go 0 (x :: nms) tps rest
+  | Match (s, bs) ->
+    parens (p > 0) @@ "match " ^ go 0 nms tps s ^ " with { " ^
+    String.concat " | " (List.map (go_branch nms tps) bs)
+    ^ " }"
   | Lit l -> string_of_lit l
   in go 0 nms tps expr
+
 
 and string_of_kind (k : kind) : string =
   let rec go (p : int) (k : kind) : string =

@@ -33,7 +33,7 @@ let classify_op (op : string) =
 
 let alpha = ['a'-'z' 'A'-'Z']
 let digit = ['0'-'9']
-let ident = (alpha) (alpha|'-'|digit|'\'')*
+let ident = (alpha) (alpha|'-'|'_'|digit|'\'')*
 let unum = digit+
 let symbol = ['!' '@' '#' '$' '%' '^' '&' '*' '-' '+' ';' '?' '/' '<' '>' ',' '~' '=' '.' ':' '|']
 let operator = symbol+
@@ -47,11 +47,17 @@ rule read = parse
   | "infer"     { INFER }
   | "postulate" { POSTULATE }
   | "type"      { TYPE }
+  | "data"      { DATA }
+  | "where"     { WHERE }
+  | '|'         { PIPE }
+  | "match"     { MATCH }
+  | "with"      { WITH }
+  | "end"       { END }
   | "bool"      { BOOL }
   | "true"      { TRUE }
   | "false"     { FALSE }
   | "int"       { INT }
-  | '*'         { STAR }
+  | "∗"         { STAR }
   | "lam"       { LAM }
   | "λ"         { LAM }
   | '\\'        { LAM }

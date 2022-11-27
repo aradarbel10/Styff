@@ -2,6 +2,12 @@ open Batteries.Uref
 open Expr
 open Eval
 
+(* choose between 'global' unification, which solves regular metavariables,
+   and 'local' unification (aka LHS unification) which solves variables from the environment *)
+type unif_mode =
+| Global
+| Local of env ref
+
 (* contextual metavariables: metavars live in toplevel and may depend on names in their occurance's context
   when solving a metavar, we need to rename those names to toplevel *)
 type partial_renaming = {
@@ -62,6 +68,7 @@ and rename_spine (r : partial_renaming) (t : typ) (sp : spine) (tv' : tvar uref)
 
 
 exception Ununifiable
+exception UnunifiableLocals
 exception DifferentSpineLength
 exception UnunifiableKinds
 
@@ -81,23 +88,48 @@ let solve (hi : lvl) (tv : tvar uref) (sp : spine) (t : vtyp) : unit =
   let sol = eval [] (close ren.dom rhs) in
   uset tv (Solved sol)
 
+let rec assign_local (env : env ref) (lvl : lvl) (t : vtyp) : unit =
+  let vne = List.rev !env in
+  let (x, solved, _, _) = List.nth vne (unLvl lvl) in
+  let entry = match solved with
+    | `ESolved -> failwith "idk what to do"
+    | `EUnsolved -> (x, `ESolved, `EDefed, t)
+  in
+  let vne' = List.mapi (fun i e -> if i = unLvl lvl then entry else e) vne in
+  env := List.rev vne';
+and solve_local (env : env ref) (_hi : lvl) (i : lvl) (i' : lvl) : unit =
+  match lookup_lvl i !env, lookup_lvl i' !env with (* should maybe add some kind of forcing/just represent env more like metactx *)
+  | None, _ | _, None -> failwith "absurd!" (* ill scoped value *)
+  | Some (_, _, _, t), Some (_, _, _, t') when t = t' -> ()
+  | Some (_, `EUnsolved, _, u), Some (_, _, _, t) | Some (_, _, _, t), Some (_, `EUnsolved, _, u) ->
+    begin match force u with
+    | VNeut (VQvar i, []) -> assign_local env i t
+    | _ -> failwith "absurd!" (* invalid unsolved value *)
+    end
+  | Some (_, `ESolved, _, t), Some (_, `ESolved, _, t') -> (* unify hi (Local env) t t' *)
+    if t = t' then () else raise UnunifiableLocals
+
 (* confirm two types are equal, solve metavars along the way if needed.
    thanks to NbE we don't need to worry about a complicated equational theory. *)
-let rec unify (hi : lvl) (typ : vtyp) (typ' : vtyp) : unit =
-  match force typ, force typ' with
-  | VNeut (VTvar tv, sp), VNeut (VTvar tv', sp') when tv = tv' -> unify_spines hi sp sp'
-  | VNeut (VQvar i, sp), VNeut (VQvar i', sp') when i = i' -> unify_spines hi sp sp'
-  | VNeut (VTvar tv, sp), t | t, VNeut (VTvar tv, sp) -> solve hi tv sp t
-  | VArrow (ltyp, rtyp), VArrow (ltyp', rtyp') ->
-    unify hi ltyp ltyp'; unify hi rtyp rtyp'
-  | VAbs (x, c), VAbs (x', c') -> unify (inc hi) (cinst_at hi x c) (cinst_at hi x' c')
-  | VForall (x, c), VForall (x', c') -> unify (inc hi) (cinst_at hi x c) (cinst_at hi x' c')
-  | VBase b, VBase b' when b = b' -> ()
-  | t, t' -> let _ = (t, t') in raise Ununifiable
-and unify_spines (hi : lvl) (sp : spine) (sp' : spine) =
+and unify (hi : lvl) (mode : unif_mode) (typ : vtyp) (typ' : vtyp) : unit =
+  match mode, force typ, force typ' with
+  | _, VNeut (VTvar tv, sp), VNeut (VTvar tv', sp') when tv = tv' -> unify_spines hi mode sp sp'
+  | Global, VNeut (VTvar tv, sp), t
+  | Global, t, VNeut (VTvar tv, sp) -> solve hi tv sp t
+  | Global, VNeut (VQvar i, sp), VNeut (VQvar i', sp') when i = i' -> unify_spines hi mode sp sp'
+  | Local env, VNeut (VQvar i, sp), VNeut (VQvar i', sp') -> unify_spines hi mode sp sp'; solve_local env hi i i'
+  (* | Local env, VNeut (VQvar i, sp), t
+  | Local env, t, VNeut (VQvar i, sp) -> solve_local hi env i sp t *)
+  | _, VArrow (ltyp, rtyp), VArrow (ltyp', rtyp') ->
+    unify hi mode ltyp ltyp'; unify hi mode rtyp rtyp'
+  | _, VAbs (x, c), VAbs (x', c') -> unify (inc hi) mode (cinst_at hi x c) (cinst_at hi x' c')
+  | _, VForall (x, c), VForall (x', c') -> unify (inc hi) mode (cinst_at hi x c) (cinst_at hi x' c')
+  | _, VBase b, VBase b' when b = b' -> ()
+  | _, t, t' -> let _ = (t, t') in raise Ununifiable
+and unify_spines (hi : lvl) (mode : unif_mode) (sp : spine) (sp' : spine) =
   match sp, sp' with
   | [], [] -> ()
-  | (t :: sp), (t' :: sp') -> unify_spines hi sp sp'; unify hi t t'
+  | (t :: sp), (t' :: sp') -> unify_spines hi mode sp sp'; unify hi mode t t'
   | _ -> raise DifferentSpineLength
 
 and unify_kinds (k : kind) (k' : kind) =

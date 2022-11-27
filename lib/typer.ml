@@ -4,6 +4,8 @@ open Pretty
 open Expr
 open Eval
 open Unif
+open Scene
+open Pattern
 
 (* source of fresh unification variables, mutable counter is hidden *)
 module Fresh : sig
@@ -20,49 +22,6 @@ end = struct
 end
 open Fresh
 
-(* all typechecking occurs inside a [scene]:
-
-   ctx - maps variables to types
-   tctx - maps type variables to kinds 
-   env - maps type variables to values
-   msk - tells which type variables are bound
-   height - length of tctx, stored separately to avoid re-calculation *)
-type ctx = (name * vtyp) list
-type tctx = (name * kind) list
-type scene = {
-  ctx : ctx;
-
-  height : lvl;
-  tctx : tctx;
-  env : env;
-  msk : mask;
-}
-
-let empty_scene : scene = {ctx = []; height = Lvl 0; tctx = []; env = []; msk = []}
-let names scn = List.map fst scn.ctx
-let tps scn = List.map fst scn.tctx
-
-let assume (scn : scene) (x : name) (t : vtyp) : scene =
-  {scn with
-    ctx = (x, t) :: scn.ctx;
-  }
-
-let assume_typ (scn : scene) (x : name) (k : kind) : scene =
-  {scn with
-    height = inc scn.height;
-    tctx = (x, k) :: scn.tctx;
-    env = (x, vqvar scn.height) :: scn.env;
-    msk = true :: scn.msk;
-  }
-
-let define_typ (scn : scene) (x : name) (t : vtyp) (k : kind) : scene =
-  {scn with
-    height = inc scn.height;
-    tctx = (x, k) :: scn.tctx;
-    env = (x, t) :: scn.env;
-    msk = false :: scn.msk;
-  }
-
 exception UndefinedVar of name
 exception UndefinedQVar of name
 exception Unexpected of typ
@@ -71,14 +30,14 @@ exception UnexpectedHigherKind
 
 (* wrapper for [unify] to catch errors *)
 let unify' (scn : scene) (t : vtyp) (t' : vtyp) =
-  try unify scn.height t t' with
+  try unify scn.height Global t t' with
   | Ununifiable ->
-    let nms = List.map fst scn.env in
+    let nms = List.map (fun (x, _, _, _) -> x) scn.env in
     let str  = string_of_vtype nms t  in
     let str' = string_of_vtype nms t' in
     raise (Failure ("unable to unify " ^ str ^ " ~/~ " ^ str'))
 
-let type_of_lit : lit -> base = function
+let infer_lit : lit -> base = function
 | `Int _ -> `Int
 | `Bool _ -> `Bool
 
@@ -90,7 +49,7 @@ let clos_of (scn : scene) (t : vtyp) : clos =
 let insert (scn : scene) (e, t : expr * vtyp) : expr * vtyp =
   match force t with
   | VForall (x, bod) ->
-    let m = fresh scn.msk x in
+    let m = fresh (mask_of scn) x in
     let m' = eval scn.env m in
     (Inst (e, m), capp x bod m')
   | t -> (e, t)
@@ -125,7 +84,7 @@ let rec kind_of (scn : scene) : rtyp -> typ * kind = function
   (TLet (x, t, rest), krest)
 | RTAbs (x, None, t) ->
   let kv = freshk "k" in
-  let (t, k) = kind_of (assume_typ scn x kv) t in
+  let (t, k) = kind_of (assume_typ scn x kv `EUnsolved) t in
   (t, KArrow (kv, k))
 | RTAbs (x, Some k, t) ->
   let (t, k') = kind_of scn (RTAbs (x, None, t)) in
@@ -134,28 +93,26 @@ let rec kind_of (scn : scene) : rtyp -> typ * kind = function
   (t, k)
 | RForall (x, t) ->
   let xk = freshk x in
-  let t = is_type (assume_typ scn x xk) t in
+  let t = is_type (assume_typ scn x xk `EUnsolved) t in
   (Forall (x, B t), Star)
-| RHole -> (fresh scn.msk "t", Star)
+| RHole -> (fresh (mask_of scn) "t", Star)
 | RQvar x ->
   match assoc_idx x scn.tctx with
   | Some (i, k) -> (Qvar (Idx i), k)
   | None -> raise (UndefinedQVar x)
 and is_type (scn : scene) (t : rtyp) : typ =
   let (t, k) = kind_of scn t in
-  match forcek k with
-  | Star -> t
-  | KVar kv -> unify_kinds (KVar kv) Star; t
-  | _ -> raise UnexpectedHigherKind
+  unify_kinds k Star;
+  t
 and infer_let_type (scn : scene) (x : name) (_ : rkind option) (t : rtyp) : scene * typ * vtyp * kind =
   let (t, k) = kind_of scn t in
   let vt = eval scn.env t in
   (define_typ scn x vt k, t, vt, k)
 
 (* given an expression, return its core representation and infer its type *)
-let rec type_of (scn : scene) : rexpr -> expr * vtyp = function
+let rec infer (scn : scene) : rexpr -> expr * vtyp = function
 | RAnn (e, t) ->
-  let (e, te) = insert_unless scn @@ type_of scn e in
+  let (e, te) = insert_unless scn @@ infer scn e in
   let t = eval scn.env (is_type scn t) in
   unify' scn t te;
   (e, te)
@@ -167,38 +124,38 @@ let rec type_of (scn : scene) : rexpr -> expr * vtyp = function
   end
 
 | RLam (x, None, e) ->
-  let tx = eval scn.env (fresh scn.msk x) in
-  let (e, te) = type_of (assume scn x tx) e in
+  let tx = eval scn.env (fresh (mask_of scn) x) in
+  let (e, te) = infer (assume scn x tx) e in
   (Lam (x, quote scn.height tx, e), VArrow (tx, te))
 
 | RLam (x, Some tx, e) ->
   let tx = eval scn.env (is_type scn tx) in
-  let (e, te) = type_of (assume scn x tx) e in
+  let (e, te) = infer (assume scn x tx) e in
   (Lam (x, quote scn.height tx, e), VArrow (tx, te))
 
 | RTlam (x, None, e) ->
   let k = freshk "k" in
-  let (e, te) = insert_unless scn @@ type_of (assume_typ scn x k) e in
+  let (e, te) = insert_unless scn @@ infer (assume_typ scn x k `EUnsolved) e in
   (Tlam (x, e), VForall (x, clos_of scn te))
 
 | RTlam (x, Some k, e) ->
   let k = lower_kind k in
-  let (e, te) = insert_unless scn @@ type_of (assume_typ scn x k) e in
+  let (e, te) = insert_unless scn @@ infer (assume_typ scn x k `EUnsolved) e in
   (Tlam (x, e), VForall (x, clos_of scn te))
 
 | RApp (e1, e2) ->
-  let (e1, te1) = insert scn @@ type_of scn e1 in
-  let (e2, te2) = type_of scn e2 in
-  let ret = eval scn.env (fresh scn.msk "r") in
+  let (e1, te1) = insert scn @@ infer scn e1 in
+  let (e2, te2) = insert_unless scn @@ infer scn e2 in
+  let ret = eval scn.env (fresh (mask_of scn) "r") in
   unify' scn te1 (VArrow (te2, ret));
   (App (e1, e2), ret)
 
 | RInst (e, t) ->
-  let (e, te) = type_of scn e in
+  let (e, te) = infer scn e in
   let (t, k) = kind_of scn t in
 
   let x = freshen "x" in
-  let ret = fresh (assume_typ scn x k).msk "ret" in
+  let ret = fresh (mask_of (assume_typ scn x k `ESolved)) "ret" in
   let clos = {env = scn.env; bdr = B ret} in
 
   unify' scn te (VForall (x, clos));
@@ -206,23 +163,30 @@ let rec type_of (scn : scene) : rexpr -> expr * vtyp = function
 
 | RLet (rc, x, t, e, rest) ->
   let (scn, e, te) = infer_let scn rc x t e in
-  let (rest, trest) = type_of (assume scn x te) rest in
+  let (rest, trest) = infer (assume scn x te) rest in
   (Let (rc, x, quote scn.height te, e, rest), trest)
 
+| RMatch (scrut, branches) ->
+  let t = eval scn.env (fresh (mask_of scn) "t") in
+  let (scrut, scrut_typ) = infer scn scrut in
+  let branch_typs = List.map (fun (pat, branch) -> infer_branch scn scrut_typ pat branch) branches in
+  ignore @@ List.map (fun (_, _, t') -> unify' scn t t') branch_typs;
+  (Match (scrut, List.map (fun (p, e, _) -> (p, e)) branch_typs), t)
+
 | RLit n ->
-  (Lit n, VBase (type_of_lit n))
+  (Lit n, VBase (infer_lit n))
 
 and infer_let (scn : scene) (rc : bool) (x : name) (t : rtyp option) (e : rexpr) : scene * expr * vtyp =
   (* if the binding is recursive, extend the scene with it *)
   let scn = if rc then
     let t_all = match t with
-    | None -> fresh scn.msk x
+    | None -> fresh (mask_of scn) x
     | Some t_all -> is_type scn t_all
     in assume scn x (eval scn.env t_all)
   else
     scn
   in
-  let (e, te) = type_of scn e in
+  let (e, te) = infer scn e in
   begin match t with
   | Some t' ->
     let t' = eval scn.env (is_type scn t') in
@@ -230,3 +194,34 @@ and infer_let (scn : scene) (rc : bool) (x : name) (t : rtyp option) (e : rexpr)
   | None -> ()
   end;
   (assume scn x te, e, te)
+
+and infer_branch (scn : scene) (scrut_typ : vtyp) (pat : pattern) (branch : rexpr) : pattern * expr * vtyp =
+  let (scn, pat, pat_typ) = infer_pattern scn pat in
+  let scn = norm_branch_scn pat @@ local_unify pat_typ scrut_typ scn in
+  let (branch, branch_typ) = infer scn branch in
+  (pat, branch, branch_typ)
+
+
+(* get the last type in a chain of arrows (including foralls) *)
+let rec return_type (hi : lvl) : vtyp -> vtyp = function
+| VArrow (_, t) -> return_type hi t
+| VForall (x, c) -> return_type (inc hi) (cinst_at hi x c)
+| t -> t
+
+(* modify the scene with a new data declaration and its constructors *)
+exception BadCtorReturn
+let declare_ctor (parent : lvl) (scn : scene) (Ctor {nam; t} : rctor) : scene =
+  let t = is_type scn t in
+  let vt = eval scn.env t in
+  let rett = return_type scn.height (eval scn.env t) in (* ctor's return type must be the data it belongs to *)
+  match rett with
+  | VNeut (VQvar i, _) when parent = i -> assume scn nam vt
+  | _ -> raise BadCtorReturn
+let declare_data (scn : scene) (x : name) (k : rkind option) (ctors : rctor list) =
+  let k = match k with
+  | Some k -> lower_kind k
+  | None -> freshk "k"
+  in
+  let parent = scn.height in (* slightly hacky: get the height before [assume_typ], will be the lvl of the type just defined *)
+  let scn = assume_typ scn x k `ESolved in
+  List.fold_left (declare_ctor parent) scn ctors

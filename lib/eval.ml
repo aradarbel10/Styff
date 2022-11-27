@@ -31,21 +31,21 @@ let rec eval (env : env) : typ -> vtyp = function
 | TAbs (x, b) -> VAbs (x, {env = env; bdr = b})
 | TLet (x, t, rest) ->
   let vt = eval env t in
-  eval ((x, vt) :: env) rest
+  eval ((x, `ESolved, `EDefed, vt) :: env) rest
 | Forall (x, b) -> VForall (x, {env = env; bdr = b})
 | Tapp (t1, t2) -> vapp (eval env t1) (eval env t2)
 | Tvar tv -> vtvar tv
 | Inserted (tv, msk) -> app_mask env msk (vtvar tv)
 | Qvar i ->
   begin match lookup i env with
-  | Some (_, t) -> t
+  | Some (_, _, _, t) -> t
   | None -> raise IndexOutOfScope
   end
 | Base b -> VBase b
 
 (* eliminate a closure by evaling it under an extended env *)
 and capp (x : name) ({env = env; bdr = B b} : clos) (t : vtyp) : vtyp =
-  eval ((x, t) :: env) b
+  eval ((x, `ESolved, `EDefed, t) :: env) b
 and cinst_at (hi : lvl) (x : name) (c : clos) = (* instantiate closure [c] at env of height [hi] *)
   capp x c (vqvar hi)
 and vapp (t1 : vtyp) (t2 : vtyp): vtyp =
@@ -60,11 +60,12 @@ and vtvar (tv : tvar uref) : vtyp =
 and app_mask (env : env) (msk : mask) (hd : vtyp) : vtyp =
   match env, msk with
   | [], [] -> hd
-  | (_, t) :: env, bound :: msk ->
+  | (_, _, _, t) :: env, bound :: msk ->
     let hd = (app_mask env msk hd) in
-    if bound
-      then vapp hd t
-      else hd
+    begin match bound with
+    | `EBound -> vapp hd t
+    | `EDefed -> hd
+    end
   | _ -> raise IllLengthedMask
 
 and app_spine (t : vtyp) (sp : spine) : vtyp =
@@ -113,8 +114,20 @@ let rec norm_expr (env : env) (e : expr) : expr =
   | Lam (x, t, e) -> Lam (x, norm env t, norm_expr env e)
   | Tlam (x, e) ->
     let v = vqvar (Lvl (List.length env)) in
-    Tlam (x, norm_expr ((x, v) :: env) e)
+    Tlam (x, norm_expr ((x, `EUnsolved, `EBound, v) :: env) e)
   | App (e1, e2) -> App (norm_expr env e1, norm_expr env e2)
   | Inst (e, t) -> Inst (norm_expr env e, norm env t)
   | Let (rc, x, t, e, rest) -> Let (rc, x, norm env t, norm_expr env e, norm_expr env rest)
   | Lit l -> Lit l
+  | Match (e, bs) -> Match (norm_expr env e, List.map (norm_branch env) bs)
+and norm_branch (env : env) (((PCtor (_, args) as pat), bod) : pattern * expr) : pattern * expr =
+  let rec env_of_pattern (args : pat_arg list) (env : env) : env =
+    begin match args with
+    | [] -> env
+    | PVar  _ :: args -> env_of_pattern args env
+    | PTvar x :: args -> 
+      let v = vqvar (Lvl (List.length env)) in
+      (x, `EUnsolved, `EBound, v) :: env_of_pattern args env
+    end
+  in
+  (pat, norm_expr (env_of_pattern args env) bod)
