@@ -1,15 +1,15 @@
 postulate (+) : int → int → int
 postulate ( * ) : int → int → int
-postulate (==) : [a] → a → a → bool
+postulate (==) : {a : ∗} → a → a → bool
 
 data Expr : ∗ → ∗ where
 | I : int → Expr int
 | B : bool → Expr bool
 | Add : Expr int → Expr int → Expr int
 | Mul : Expr int → Expr int → Expr int
-| Eq : [a] → Expr a → Expr a → Expr bool
+| Eq : {a} → Expr a → Expr a → Expr bool
 
-let rec eval [a : ∗] (expr : Expr a) : a =
+let rec eval {a : ∗} (expr : Expr a) : a =
   match expr with
   | I n . n
   | B b . b

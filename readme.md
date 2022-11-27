@@ -8,8 +8,8 @@ A type checker based on system F-omega with pattern unifiction and implicit para
 - type definitions `type t = ...`
     - local type definitions `let type t = ... in ...`
     - type-level lambdas
-- rank N polymorphism `forall x y z . t2` written as `[x y z] → t2`
-    - optionally-explicit instantiation `e [t]`
+- rank N polymorphism `forall x y z . t2` written as `{x y z} → t2`
+    - optionally-explicit instantiation `e {t}`
 - higher kinded quantification
     - kind annotations on type binders
 - data declarations

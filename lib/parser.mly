@@ -56,7 +56,7 @@ let joinTeles : (name list * annotation) list -> rparam list =
 %token <string> INFIX8 
 %token <string> INFIXL9
 %token INFER TYPE POSTULATE DATA WHERE PIPE MATCH WITH END
-%token LAM ARROW LPAREN RPAREN LBRACK RBRACK COLON DOT LET REC EQ IN HOLE
+%token LAM ARROW LPAREN RPAREN LCURLY RCURLY COLON DOT LET REC EQ IN HOLE
 %token BOOL INT TRUE FALSE STAR
 
 %nonassoc WEAK
@@ -118,7 +118,7 @@ expr:
     }
   | e1=expr; op=infix_op; e2=expr { RApp (RApp (RVar op, e1), e2) }
 arg:
-  | LBRACK; t=typ; RBRACK { InstArg t }
+  | LCURLY; t=typ; RCURLY { InstArg t }
   | e=e_atom { AppArg e }
 
 lam_args:
@@ -128,7 +128,7 @@ let_args:
   | x=decl_name; teles=list(tele); t=option(bind_annot) { (x, teles, t) }
   | x1=IDENT; op=infix_op; x2=IDENT { (op, [[x1], TypeAnnot None; [x2], TypeAnnot None], None) }
 %inline ttele:
-  | LBRACK; xs=nonempty_list(IDENT); k=option(bind_annotk); RBRACK
+  | LCURLY; xs=nonempty_list(IDENT); k=option(bind_annotk); RCURLY
     { (xs, KindAnnot k) }
 tele:
   | t=ttele { t }
@@ -163,7 +163,7 @@ e_atom:
 typ:
   | t=t_atom; ts=list(t_atom) { unfoldTypApp t ts }
   | a=typ; ARROW; b=typ { RArrow (a, b) }
-  | LBRACK; x=IDENT; option(bind_annotk); RBRACK; ARROW; t=typ
+  | LCURLY; x=IDENT; option(bind_annotk); RCURLY; ARROW; t=typ
     { RForall (x, t) }
   | LAM; x=IDENT; k=option(bind_annotk); DOT; e=typ
     %prec WEAK { RTAbs (x, k, e) }
@@ -196,4 +196,4 @@ pattern:
   | lhs=IDENT; op=infix_op; rhs=IDENT { PCtor (op, [PVar rhs; PVar lhs]) }
 pattern_arg:
   | v=IDENT { PVar v }
-  | LBRACK; v=IDENT; RBRACK { PTvar v }
+  | LCURLY; v=IDENT; RCURLY { PTvar v }

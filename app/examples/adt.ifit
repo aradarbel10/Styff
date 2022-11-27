@@ -5,8 +5,8 @@ data Nat : ∗ where
 let three = succ (succ (succ zero))
 
 data List : ∗ → ∗ where
-| nil  : [a] → List a
-| (::) : [a] → a → List a → List a
+| nil  : {a} → List a
+| (::) : {a} → a → List a → List a
 
 let nums : List Nat = zero :: succ zero :: succ (succ zero) :: three :: nil
 
@@ -17,7 +17,7 @@ let rec nat_add (a : Nat) (b : Nat) : Nat =
   | succ a' . succ (nat_add a' b)
   end
 
-let rec list_concat [T : ∗] (xs : List T) (ys : List T) : List T =
+let rec list_concat {T : ∗} (xs : List T) (ys : List T) : List T =
   match xs with
   | nil . ys
   | x :: xs' . x :: list_concat xs' ys
@@ -25,10 +25,10 @@ let rec list_concat [T : ∗] (xs : List T) (ys : List T) : List T =
 
 (* GADTs *)
 data T : ∗ → ∗ where
-| T1 : [a] → a → T a
+| T1 : {a} → a → T a
 | T2 : int → T bool
 
-let useT [b : ∗] (t : T b) : b =
+let useT {b : ∗} (t : T b) : b =
   match t with
   | T1 x . x
   | T2 n . true

@@ -71,8 +71,8 @@ rule read = parse
   | '_'         { HOLE }
   | '('         { LPAREN }
   | ')'         { RPAREN }
-  | '['         { LBRACK }
-  | ']'         { RBRACK }
+  | '{'         { LCURLY }
+  | '}'         { RCURLY }
   | ':'         { COLON }
   | ident       { IDENT (Lexing.lexeme lexbuf) }
   | operator    { classify_op (Lexing.lexeme lexbuf) }

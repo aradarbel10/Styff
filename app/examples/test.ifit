@@ -1,23 +1,23 @@
-let id [A] (a:A) : A = a
-let const [A B] (a:A) (b:B) : A = a
+let id {A} (a:A) : A = a
+let const {A B} (a:A) (b:B) : A = a
 
-type bool' = [A] → A → A → A
+type bool' = {A} → A → A → A
 
-let true'  : bool' = λ[A] (x y : A). x
-let false' : bool' = λ[A] (x y : A). y
+let true'  : bool' = λ{A} (x y : A). x
+let false' : bool' = λ{A} (x y : A). y
 
-let and'  = λ(x y : bool'). x [bool'] y false'
+let and'  = λ(x y : bool'). x {bool'} y false'
 let and'' = λ(x : bool') y. x y false'
 
 let a && b = and' a b
 let test = true' && false'
 
-let pair = λ[A B] x y [C] (f:A → B → C). f x y
-let fst  = λ[A B] (p : [C] → (A → B → C) → C). p (λa:A. λb:B. a)
-let snd  = λ[A B] (p : [C] → (A → B → C) → C). p (λa:A. λb:B. b)
+let pair = λ{A B} x y {C} (f:A → B → C). f x y
+let fst  = λ{A B} (p : {C} → (A → B → C) → C). p (λa:A. λb:B. a)
+let snd  = λ{A B} (p : {C} → (A → B → C) → C). p (λa:A. λb:B. b)
 
-let zero = λ[A] (s : A → A) (z : A). z
-let succ = λ(n : [A] → (A → A) → A → A) [A] s z. s (n [A] s z)
+let zero = λ{A} (s : A → A) (z : A). z
+let succ = λ(n : {A} → (A → A) → A → A) {A} s z. s (n {A} s z)
 infer n = succ (succ (succ zero))
 
 postulate (+) : int → int → int
