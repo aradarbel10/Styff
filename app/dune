@@ -1,5 +1,5 @@
 (executable
- (public_name implifit)
+ (public_name styff)
  (name main)
- (libraries implifit)
+ (libraries styff)
  (modes byte exe))

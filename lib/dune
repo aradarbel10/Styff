@@ -1,6 +1,6 @@
 (library
-  (public_name implifit)
-  (name implifit)
+  (public_name styff)
+  (name styff)
   (libraries batteries))
 
 (ocamllex lexer)

@@ -1,5 +1,5 @@
-# Implifit
-A type checker based on system F-omega with pattern unifiction and implicit parameters
+# Styff
+A type checker based on system F-omega with pattern unifiction, implicit parameters, and GADTs.
 
 ### Current Features
 - function definitions
