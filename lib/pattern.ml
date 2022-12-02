@@ -37,13 +37,13 @@ let rec infer_pattern (scn : scene) (PCtor (ctor, args) : pattern) : scene * pat
   | PTvar v :: args ->
     let (scn, PCtor (ctor, args), t) = infer_pattern scn (PCtor (ctor, args)) in
     begin match t with
-    | VForall (_, c) -> (assume_typ scn v Star `EUnsolved, PCtor (ctor, PTvar v :: args), cinst_at scn.height v c)
+    | VForall (_, c) -> (assume_typ scn v c.knd `EUnsolved, PCtor (ctor, PTvar v :: args), cinst_at scn.height v c)
     | _ -> raise UnexpectedTArgPattern
     end
 (* the pattern equivalent of [insert], adds implicit instantiations as far as the type allows *)
 and insert_pattern ((scn, (PCtor (ctor, args) as pat), t) : scene * pattern * vtyp) : scene * pattern * vtyp =
   match force t with
-  | VForall (x, c) -> (assume_typ scn x Star `EUnsolved, PCtor (ctor, PTvar x :: args), cinst_at scn.height x c)
+  | VForall (x, c) -> (assume_typ scn x c.knd `EUnsolved, PCtor (ctor, PTvar x :: args), cinst_at scn.height x c)
   | t -> (scn, pat, t)
 
 (*

@@ -2,6 +2,21 @@ open Batteries.Uref
 open Expr
 open Eval
 
+(* source of fresh unification variables, mutable counter is hidden *)
+module Fresh : sig
+  val uniquei : int
+  val freshen : name -> name
+  val freshk : name -> kind
+  val fresh : mask -> name -> typ
+end = struct
+  let freshi = ref (-1)
+  let uniquei = freshi := !freshi + 1; !freshi
+  let freshen (x : name) = x ^ string_of_int uniquei
+  let freshk (x : name) = KVar (uref (KUnsolved (freshen x)))
+  let fresh (msk : mask) (x : name) = Inserted (uref (Unsolved (freshen x)), freshk (freshen "k"), msk)
+end
+include Fresh
+
 (* choose between 'global' unification, which solves regular metavariables,
    and 'local' unification (aka LHS unification) which solves variables from the environment *)
 type unif_mode =
@@ -44,18 +59,18 @@ let rec rename (r : partial_renaming) (t : vtyp) (tv' : tvar uref) : typ =
   match force t with
   | VNeut (hd, sp) ->
     begin match hd with
-    | VTvar tv ->
+    | VTvar (tv, k) ->
       if equal tv tv'
         then raise OccursError
-        else rename_spine r (Tvar tv) sp tv'
+        else rename_spine r (Tvar (tv, k)) sp tv'
     | VQvar i ->
       match List.assoc_opt i r.ren with
       | None -> raise IllScopedSpine
       | Some i' -> rename_spine r (Qvar (lvl2idx r.dom i')) sp tv'
     end
   | VArrow (lt, rt) -> Arrow (rename r lt tv', rename r rt tv')
-  | VAbs (x, c) -> TAbs (x, rename_clos r x c tv')
-  | VForall (x, c) -> Forall (x, rename_clos r x c tv')
+  | VAbs (x, c) -> TAbs (x, c.knd, rename_clos r x c tv')
+  | VForall (x, c) -> Forall (x, c.knd, rename_clos r x c tv')
   | VBase b -> Base b
 and rename_clos (r : partial_renaming) (x : name) (c : clos) (tv' : tvar uref) : bdr =
   let bod = cinst_at r.cod x c in
@@ -74,18 +89,22 @@ exception UnunifiableKinds
 
 (* we encode contextual metas using type-level abstractions.
    this converts an (open) rhs to a closed term by wrapping it with abs *)
-let rec close (Lvl i : lvl) (t : typ) : typ =
-  if i < 0
-    then raise (Invalid_argument "can't wrap negative lambdas")
-  else if i = 0
-    then t
-  else
-    close (Lvl (i - 1)) (TAbs ("x" ^ string_of_int i, B t))
+let rec close (Lvl i : lvl) (k : kind) (t : typ) : typ =
+  match forcek k with
+  | _ when i < 0 -> raise (Invalid_argument "can't wrap negative lambdas")
+  | _ when i = 0 -> t
+  | KArrow (lk, rk) -> close (Lvl (i - 1)) rk (TAbs ("x" ^ string_of_int i, lk, B t))
+  | KVar kv ->
+    let lk = freshk "lk" in
+    let rk = freshk "rk" in
+    uset kv (KSolved (KArrow (lk, rk)));
+    close (Lvl i) (KVar kv) t
+  | _ -> raise (Invalid_argument "can't wrap type-lambda around non-arrow kind")
 
-let solve (hi : lvl) (tv : tvar uref) (sp : spine) (t : vtyp) : unit =
+let solve (hi : lvl) (tv : tvar uref) (k : kind) (sp : spine) (t : vtyp) : unit =
   let ren = invert hi sp in
   let rhs = rename ren t tv in
-  let sol = eval [] (close ren.dom rhs) in
+  let sol = eval [] (close ren.dom k rhs) in
   uset tv (Solved sol)
 
 let rec assign_local (env : env ref) (lvl : lvl) (t : vtyp) : unit =
@@ -113,9 +132,10 @@ and solve_local (env : env ref) (_hi : lvl) (i : lvl) (i' : lvl) : unit =
    thanks to NbE we don't need to worry about a complicated equational theory. *)
 and unify (hi : lvl) (mode : unif_mode) (typ : vtyp) (typ' : vtyp) : unit =
   match mode, force typ, force typ' with
-  | _, VNeut (VTvar tv, sp), VNeut (VTvar tv', sp') when tv = tv' -> unify_spines hi mode sp sp'
-  | Global, VNeut (VTvar tv, sp), t
-  | Global, t, VNeut (VTvar tv, sp) -> solve hi tv sp t
+  | _, VNeut (VTvar (tv, k), sp), VNeut (VTvar (tv', k'), sp') when tv = tv' ->
+    unify_kinds k k'; unify_spines hi mode sp sp'
+  | Global, VNeut (VTvar (tv, k), sp), t
+  | Global, t, VNeut (VTvar (tv, k), sp) -> solve hi tv k sp t
   | Global, VNeut (VQvar i, sp), VNeut (VQvar i', sp') when i = i' -> unify_spines hi mode sp sp'
   | Local env, VNeut (VQvar i, sp), VNeut (VQvar i', sp') -> unify_spines hi mode sp sp'; solve_local env hi i i'
   | Local env, VNeut (VQvar i, []), t | Local env, t, VNeut (VQvar i, []) -> assign_local env i t

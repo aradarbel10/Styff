@@ -163,8 +163,8 @@ e_atom:
 typ:
   | t=t_atom; ts=list(t_atom) { unfoldTypApp t ts }
   | a=typ; ARROW; b=typ { RArrow (a, b) }
-  | LCURLY; x=IDENT; option(bind_annotk); RCURLY; ARROW; t=typ
-    { RForall (x, t) }
+  | LCURLY; x=IDENT; k=option(bind_annotk); RCURLY; ARROW; t=typ
+    { RForall (x, k, t) }
   | LAM; x=IDENT; k=option(bind_annotk); DOT; e=typ
     %prec WEAK { RTAbs (x, k, e) }
   | t1=typ; op=infix_op; t2=typ { RTapp (RTapp (RQvar op, t1), t2) }

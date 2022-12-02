@@ -18,8 +18,7 @@ let rec eval {a : ∗} (expr : Expr a) : a =
   | Eq e1 e2 . eval e1 == eval e2
   end
 
-
-
-
 data Exists : (∗ → ∗) → ∗ where
 | pair : {A : ∗} → {f : ∗ → ∗} → f A → Exists f
+
+let double_it : Exists (λt. t → int) = pair {int} {λt. t → int} (λn. n * 2)

@@ -19,7 +19,7 @@ type rtyp =
 | RTapp of rtyp * rtyp
 | RTAbs of name * rkind option * rtyp
 | RTLet of name * rkind option * rtyp * rtyp
-| RForall of name * rtyp
+| RForall of name * rkind option * rtyp
 | RBase of base
 | RHole
 
@@ -60,7 +60,7 @@ type prog = stmt list
 type expr =
 | Var of idx
 | Lam of name * typ * expr
-| Tlam of name * expr
+| Tlam of name * kind * expr
 | App of expr * expr
 | Inst of expr * typ
 | Let of bool * name * typ * expr * expr
@@ -68,14 +68,14 @@ type expr =
 | Lit of lit
 
 and typ =
-| Tvar of tvar uref
-| Inserted of tvar uref * mask
+| Tvar of tvar uref * kind
+| Inserted of tvar uref * kind * mask
 | Qvar of idx
 | Arrow of typ * typ
 | Tapp of typ * typ
-| TAbs of name * bdr
-| TLet of name * typ * typ
-| Forall of name * bdr
+| TAbs of name * kind * bdr
+| TLet of name * kind * typ * typ
+| Forall of name * kind * bdr
 | Base of base
 and bdr = B of typ
 
@@ -102,9 +102,9 @@ and tvar =
 | Unsolved of name
 and head =
 | VQvar of lvl
-| VTvar of tvar uref
+| VTvar of tvar uref * kind
 and spine = vtyp list
-and clos = {env : env; bdr : bdr} (* [bdr] lives in a scene of height |env|+1, the extra value is the closure's parameter *)
+and clos = {knd : kind; env : env; bdr : bdr} (* [bdr] lives in a scene of height |env|+1, the extra value is the closure's parameter *)
 
 and env = (name * esolved * ebound * vtyp) list
 (*

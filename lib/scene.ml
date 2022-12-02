@@ -9,9 +9,14 @@ open Expr
 
   tctx - maps type variables to kinds 
   env - maps type variables to values
-  height - length of tctx, stored separately to avoid re-calculation *)
+  height - length of tctx, stored separately to avoid re-calculation
+  
+  trace - a "call stack" of the type checker
+*)
 type ctx = (name * vtyp) list
 type tctx = (name * kind) list
+type trace = string list
+
 type scene = {
   ctx : ctx;
 
@@ -21,9 +26,11 @@ type scene = {
   height : lvl;
   tctx : tctx;
   env : env;
+
+  trace : trace;
 }
 
-let empty_scene : scene = {ctx = []; ctors = []; parents = []; height = Lvl 0; tctx = []; env = []}
+let empty_scene : scene = {ctx = []; ctors = []; parents = []; height = Lvl 0; tctx = []; env = []; trace = []}
 let names scn = List.map fst scn.ctx
 let tps scn = List.map fst scn.tctx
 
@@ -54,3 +61,10 @@ let define_ctors (scn : scene) (x : name) (ctors : name list) : scene =
     ctors = (x, ctors) :: scn.ctors;
     parents = List.map (fun c -> (c, x)) ctors @ scn.parents
   }
+
+let log (scn : scene) (msg : string) : scene = {scn with trace = msg :: scn.trace}
+let print_event (msg : string) : unit =
+  print_endline @@ "while " ^ msg
+let complain (scn : scene) (err : string) : unit =
+  print_endline err;
+  List.iter print_event scn.trace

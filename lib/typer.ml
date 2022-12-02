@@ -1,4 +1,3 @@
-open Batteries.Uref
 open Util
 open Pretty
 open Expr
@@ -6,21 +5,6 @@ open Eval
 open Unif
 open Scene
 open Pattern
-
-(* source of fresh unification variables, mutable counter is hidden *)
-module Fresh : sig
-  val uniquei : int
-  val freshen : name -> name
-  val fresh : mask -> name -> typ
-  val freshk : name -> kind
-end = struct
-  let freshi = ref (-1)
-  let uniquei = freshi := !freshi + 1; !freshi
-  let freshen (x : name) = x ^ string_of_int uniquei
-  let fresh (msk : mask) (x : name) = Inserted (uref (Unsolved (freshen x)), msk)
-  let freshk (x : name) = KVar (uref (KUnsolved (freshen x)))
-end
-open Fresh
 
 exception UndefinedVar of name
 exception UndefinedQVar of name
@@ -42,8 +26,8 @@ let infer_lit : lit -> base = function
 | `Bool _ -> `Bool
 
 (* construct a closure around a value *)
-let clos_of (scn : scene) (t : vtyp) : clos =
-  {env = scn.env; bdr = B (quote (inc scn.height) t)}
+let clos_of (scn : scene) (t : vtyp) (k : kind) : clos =
+  {knd = k; env = scn.env; bdr = B (quote (inc scn.height) t)}
 
 (* to allow implicit instantiation, we sometimes insert an application for the user *)
 let insert (scn : scene) (e, t : expr * vtyp) : expr * vtyp =
@@ -81,20 +65,15 @@ let rec kind_of (scn : scene) : rtyp -> typ * kind = function
 | RTLet (x, k, t, rest) ->
   let (scn, t, vt, k) = infer_let_type scn x k t in
   let (rest, krest) = kind_of (define_typ scn x vt k) rest in
-  (TLet (x, t, rest), krest)
-| RTAbs (x, None, t) ->
-  let kv = freshk "k" in
-  let (t, k) = kind_of (assume_typ scn x kv `EUnsolved) t in
-  (t, KArrow (kv, k))
-| RTAbs (x, Some k, t) ->
-  let (t, k') = kind_of scn (RTAbs (x, None, t)) in
-  let k = lower_kind k in
-  unify_kinds k k';
-  (t, k)
-| RForall (x, t) ->
-  let xk = freshk x in
+  (TLet (x, k, t, rest), krest)
+| RTAbs (x, xk, t) ->
+  let xk = maybe_rkind "k" xk in
+  let (t, tk) = kind_of (assume_typ scn x xk `EUnsolved) t in
+  (TAbs (x, xk, B t), KArrow (xk, tk))
+| RForall (x, xk, t) ->
+  let xk = maybe_rkind "k" xk in
   let t = is_type (assume_typ scn x xk `EUnsolved) t in
-  (Forall (x, B t), Star)
+  (Forall (x, xk, B t), Star)
 | RHole -> (fresh (mask_of scn) "t", Star)
 | RQvar x ->
   match assoc_idx x scn.tctx with
@@ -130,25 +109,15 @@ let rec infer (scn : scene) : rexpr -> expr * vtyp = function
   | Some (i, t) -> (Var (Idx i), t)
   end
 
-| RLam (x, None, e) ->
-  let tx = eval scn.env (fresh (mask_of scn) x) in
-  let (e, te) = infer (assume scn x tx) e in
-  (Lam (x, quote scn.height tx, e), VArrow (tx, te))
+| RLam (x, xt, e) ->
+  let xt = eval scn.env (maybe_rtyp scn "x" xt) in
+  let (e, te) = infer (assume scn x xt) e in
+  (Lam (x, quote scn.height xt, e), VArrow (xt, te))
 
-| RLam (x, Some tx, e) ->
-  let tx = eval scn.env (is_type scn tx) in
-  let (e, te) = infer (assume scn x tx) e in
-  (Lam (x, quote scn.height tx, e), VArrow (tx, te))
-
-| RTlam (x, None, e) ->
-  let k = freshk "k" in
-  let (e, te) = insert_unless scn @@ infer (assume_typ scn x k `EUnsolved) e in
-  (Tlam (x, e), VForall (x, clos_of scn te))
-
-| RTlam (x, Some k, e) ->
-  let k = lower_kind k in
-  let (e, te) = insert_unless scn @@ infer (assume_typ scn x k `EUnsolved) e in
-  (Tlam (x, e), VForall (x, clos_of scn te))
+| RTlam (x, xk, e) ->
+  let xk = maybe_rkind "k" xk in
+  let (e, te) = insert_unless scn @@ infer (assume_typ scn x xk `EUnsolved) e in
+  (Tlam (x, xk, e), VForall (x, clos_of scn te xk))
 
 | RApp (e1, e2) ->
   let (e1, te1) = insert scn @@ infer scn e1 in
@@ -169,7 +138,7 @@ let rec infer (scn : scene) : rexpr -> expr * vtyp = function
 
   let x = freshen "x" in
   let ret = fresh (mask_of (assume_typ scn x k `ESolved)) "ret" in
-  let clos = {env = scn.env; bdr = B ret} in
+  let clos = {knd = k; env = scn.env; bdr = B ret} in
 
   unify' scn te (VForall (x, clos));
   (Inst (e, t), capp x clos (eval scn.env t))
@@ -206,8 +175,8 @@ and check (scn : scene) (e : rexpr) (t : vtyp) : expr = match e, force t with
 
 | RTlam (x, None, e), VForall (x', c) ->
   let ret_typ = cinst_at scn.height x' c in
-  let e = check (assume_typ scn x Star (*todo kind annotation on x'*) `EUnsolved) e ret_typ in
-  Tlam (x, e)
+  let e = check (assume_typ scn x c.knd (*todo kind annotation on x'*) `EUnsolved) e ret_typ in
+  Tlam (x, c.knd, e)
 
 | RLet (rc, x, ps, t, e, rest), t_rest ->
   let (scn, _, e, te) = infer_let scn rc x ps t e in
@@ -244,7 +213,7 @@ and process_params (scn : scene) (ps : rparam list) (ret_typ : rtyp option) : sc
     let k = maybe_rkind x k in
     let scn = assume_typ scn x k `EUnsolved in
     let (scn, all_typ, ret_typ) = process_params scn ps ret_typ in
-    (scn, Forall (x, B all_typ), ret_typ)
+    (scn, Forall (x, k, B all_typ), ret_typ)
 
 (* compute the scene representing a [let]'s inner scope, with all parameters bound.
   also returns the entire binding's type, and just its return type (without parameters)

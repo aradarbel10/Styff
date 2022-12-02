@@ -28,14 +28,14 @@ they are what's tested for equality during unification.
 (* evaluation, eliminates all redexes without going under binders *)
 let rec eval (env : env) : typ -> vtyp = function
 | Arrow (lt, rt) -> VArrow (eval env lt, eval env rt)
-| TAbs (x, b) -> VAbs (x, {env = env; bdr = b})
-| TLet (x, t, rest) ->
+| TAbs (x, k, b) -> VAbs (x, {knd = k; env = env; bdr = b})
+| TLet (x, _, t, rest) ->
   let vt = eval env t in
   eval ((x, `ESolved, `EDefed, vt) :: env) rest
-| Forall (x, b) -> VForall (x, {env = env; bdr = b})
+| Forall (x, k, b) -> VForall (x, {knd = k; env = env; bdr = b})
 | Tapp (t1, t2) -> vapp (eval env t1) (eval env t2)
-| Tvar tv -> vtvar tv
-| Inserted (tv, msk) -> app_mask env msk (vtvar tv)
+| Tvar (tv, k) -> vtvar tv k
+| Inserted (tv, k, msk) -> app_mask env msk (vtvar tv k)
 | Qvar i ->
   begin match lookup i env with
   | Some (_, _, _, t) -> t
@@ -44,7 +44,7 @@ let rec eval (env : env) : typ -> vtyp = function
 | Base b -> VBase b
 
 (* eliminate a closure by evaling it under an extended env *)
-and capp (x : name) ({env = env; bdr = B b} : clos) (t : vtyp) : vtyp =
+and capp (x : name) ({knd = _; env = env; bdr = B b} : clos) (t : vtyp) : vtyp =
   eval ((x, `ESolved, `EDefed, t) :: env) b
 and cinst_at (hi : lvl) (x : name) (c : clos) = (* instantiate closure [c] at env of height [hi] *)
   capp x c (vqvar hi)
@@ -53,10 +53,10 @@ and vapp (t1 : vtyp) (t2 : vtyp): vtyp =
   | VAbs (x, c) -> capp x c t2
   | VNeut (hd, sp) -> VNeut (hd, t2 :: sp)
   | _ -> raise AppNonAbs
-and vtvar (tv : tvar uref) : vtyp =
+and vtvar (tv : tvar uref) (k : kind) : vtyp =
   match uget tv with
   | Solved t -> t
-  | Unsolved _ -> VNeut (VTvar tv, [])
+  | Unsolved _ -> VNeut (VTvar (tv, k), [])
 and app_mask (env : env) (msk : mask) (hd : vtyp) : vtyp =
   match env, msk with
   | [], [] -> hd
@@ -75,7 +75,7 @@ and app_spine (t : vtyp) (sp : spine) : vtyp =
 
 and force (t : vtyp) : vtyp =
   begin match t with
-  | VNeut (VTvar tv, sp) ->
+  | VNeut (VTvar (tv, _), sp) ->
     begin match uget tv with
     | Solved t' -> force (app_spine t' sp)
     | _ -> t
@@ -87,8 +87,8 @@ and force (t : vtyp) : vtyp =
 let rec quote (hi : lvl) (t: vtyp) : typ =
   match force t with
 | VArrow (lt, rt) -> Arrow (quote hi lt, quote hi rt)
-| VAbs (x, c) -> TAbs (x, quote_clos hi x c)
-| VForall (x, c) -> Forall (x, quote_clos hi x c)
+| VAbs (x, c) -> TAbs (x, c.knd, quote_clos hi x c)
+| VForall (x, c) -> Forall (x, c.knd, quote_clos hi x c)
 | VBase b -> Base b
 | VNeut (hd, sp) -> quote_spine hi (quote_head hi hd) sp
 and quote_spine (hi : lvl) (hd : typ) (sp : spine) : typ =
@@ -97,7 +97,7 @@ and quote_spine (hi : lvl) (hd : typ) (sp : spine) : typ =
   | arg :: sp -> Tapp (quote_spine hi hd sp, quote hi arg)
 and quote_head (hi : lvl) : head -> typ = function
 | VQvar i -> Qvar (lvl2idx hi i)
-| VTvar tv -> Tvar tv
+| VTvar (tv, k) -> Tvar (tv, k)
 and quote_clos (hi : lvl) (x : name) (c : clos) : bdr =
   let bod = cinst_at hi x c in
   let bdr = quote (inc hi) bod in
@@ -113,9 +113,9 @@ let rec norm_expr (env : env) (e : expr) : expr =
   match e with
   | Var i -> Var i
   | Lam (x, t, e) -> Lam (x, norm env t, norm_expr env e)
-  | Tlam (x, e) ->
+  | Tlam (x, k, e) ->
     let v = vqvar (height env) in
-    Tlam (x, norm_expr ((x, `EUnsolved, `EBound, v) :: env) e)
+    Tlam (x, k, norm_expr ((x, `EUnsolved, `EBound, v) :: env) e)
   | App (e1, e2) -> App (norm_expr env e1, norm_expr env e2)
   | Inst (e, t) -> Inst (norm_expr env e, norm env t)
   | Let (rc, x, t, e, rest) -> Let (rc, x, norm env t, norm_expr env e, norm_expr env rest)
