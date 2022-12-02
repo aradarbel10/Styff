@@ -21,7 +21,6 @@ A type checker based on system F-omega with pattern unifiction and implicit para
     - infix type formers (but no constructors yet)
 
 ### Future Ideas/TODOs
-- pattern match coverage check
 - pattern match escape checking on existentials
 
 - bring back `∀` syntax sugar

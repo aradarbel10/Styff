@@ -18,3 +18,8 @@ let rec eval {a : ∗} (expr : Expr a) : a =
   | Eq e1 e2 . eval e1 == eval e2
   end
 
+
+
+
+data Exists : (∗ → ∗) → ∗ where
+| pair : {A : ∗} → {f : ∗ → ∗} → f A → Exists f

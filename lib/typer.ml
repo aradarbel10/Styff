@@ -180,8 +180,9 @@ let rec infer (scn : scene) : rexpr -> expr * vtyp = function
   (Let (rc, x, quote scn.height te, e, rest), trest)
 
 | RMatch (scrut, branches) ->
-  let t = eval scn.env (fresh (mask_of scn) "t") in
+  check_coverage scn branches;
   let (scrut, scrut_typ) = infer scn scrut in
+  let t = eval scn.env (fresh (mask_of scn) "t") in
   let branch_typs = List.map (fun (pat, branch) -> infer_branch scn scrut_typ pat branch) branches in
   ignore @@ List.map (fun (_, _, t') -> unify' scn t t') branch_typs;
   (Match (scrut, List.map (fun (p, e, _) -> (p, e)) branch_typs), t)
@@ -214,6 +215,7 @@ and check (scn : scene) (e : rexpr) (t : vtyp) : expr = match e, force t with
   Let (rc, x, quote scn.height te, e, rest)
 
 | RMatch (scrut, branches), ret_typ ->
+  check_coverage scn branches;
   let (scrut, scrut_typ) = infer scn scrut in
   let branch_typs = List.map (fun (pat, branch) -> check_branch scn scrut_typ pat branch ret_typ) branches in
   Match (scrut, branch_typs)
@@ -244,12 +246,16 @@ and process_params (scn : scene) (ps : rparam list) (ret_typ : rtyp option) : sc
     let (scn, all_typ, ret_typ) = process_params scn ps ret_typ in
     (scn, Forall (x, B all_typ), ret_typ)
 
+(* compute the scene representing a [let]'s inner scope, with all parameters bound.
+  also returns the entire binding's type, and just its return type (without parameters)
+*)
 and scene_of_let (scn : scene) (rc : bool) (x : name) (ps : rparam list) (ret_typ : rtyp option) : scene * vtyp * vtyp =
   let (inner_scn, all_typ, ret_typ) = process_params scn ps ret_typ in
   let all_typ = eval scn.env all_typ in
   let inner_scn = if rc then assume inner_scn x all_typ else inner_scn in
   (inner_scn, all_typ, ret_typ)
 
+(* returns first the scope after the [let], and second the [let]'s inner scope *)
 and infer_let (scn : scene) (rc : bool) (x : name) (ps : rparam list) (t : rtyp option) (e : rexpr) : scene * scene * expr * vtyp =
   (* if the binding is recursive, extend the scene with it *)
   let (inner_scn, all_typ, ret_typ) = scene_of_let scn rc x ps t in
@@ -283,10 +289,8 @@ let declare_ctor (parent : lvl) (scn : scene) (Ctor {nam; t} : rctor) : scene =
   | VNeut (VQvar i, _) when parent = i -> assume scn nam vt
   | _ -> raise BadCtorReturn
 let declare_data (scn : scene) (x : name) (k : rkind option) (ctors : rctor list) =
-  let k = match k with
-  | Some k -> lower_kind k
-  | None -> freshk "k"
-  in
+  let k = maybe_rkind (freshen "k") k in
   let parent = scn.height in (* slightly hacky: get the height before [assume_typ], will be the lvl of the type just defined *)
   let scn = assume_typ scn x k `ESolved in
-  List.fold_left (declare_ctor parent) scn ctors
+  let scn = List.fold_left (declare_ctor parent) scn ctors in
+  define_ctors scn x (List.map (fun (Ctor {nam; _}) -> nam) ctors)

@@ -2,6 +2,7 @@ open Expr
 open Unif
 open Eval
 open Scene
+open Util
 
 (*
   local_unify is similar to regular unification, but instead of solving metas it can solve locally bound variables.
@@ -78,3 +79,31 @@ let scene_of_pattern (scn : scene) (scrut_typ : vtyp) (pat : pattern) : pattern 
   let (scn, pat, pat_typ) = insert_pattern @@ infer_pattern scn pat in
   let scn = norm_branch_scn pat @@ local_unify pat_typ scrut_typ scn in
   (pat, scn)
+
+(* check all constructors are matched exactly once *)
+exception DuplicateCases
+exception MissingCases
+exception UnrelatedCases
+
+let check_same_parent (scn : scene) (ctors : name list) : name =
+  let parents = List.map (fun c -> List.assoc c scn.parents) ctors in
+  match parents with
+  | [] -> failwith "empty match unsupported"
+  | parent :: rest ->
+    if List.for_all (fun p -> p = parent) rest
+      then parent
+      else raise UnrelatedCases
+
+let check_coverage (scn : scene) (branches : (pattern * rexpr) list) : unit =
+  let ctors = List.map (fun (PCtor (x, _), _) -> x) branches in
+  let parent = check_same_parent scn ctors in
+  match List.assoc_opt parent scn.ctors with
+  | None -> failwith "absurd!" (* parent returned from scene must exist *)
+  | Some cover ->
+    List.iter (fun ctor ->
+      if mem_once ctor ctors
+        then ()
+      else if List.mem ctor ctors
+        then raise DuplicateCases
+        else raise MissingCases
+    ) cover

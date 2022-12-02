@@ -14,3 +14,11 @@ let rec assoc_idx (x : 'a) (xs : ('a * 'b) list) : (int * 'b) option =
     match assoc_idx x xs' with
     | None -> None
     | Some (i, y') -> Some (i + 1, y')
+
+let rec mem_once (y : 'a) (xs : 'a list) : bool =
+  match xs with
+  | [] -> false
+  | x::xs ->
+    if x = y
+      then not (List.mem y xs)
+      else mem_once y xs

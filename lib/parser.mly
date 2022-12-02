@@ -178,6 +178,7 @@ t_atom:
 kind:
   | STAR { RStar }
   | lk=kind; ARROW; rk=kind { RKArrow (lk, rk) }
+  | LPAREN; k=kind; RPAREN { k }
 bind_annotk:
   | COLON; k=kind { k }
 
