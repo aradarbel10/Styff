@@ -1,21 +1,10 @@
 open Batteries.Uref
-open Expr
+open Syntax.Core
 open Eval
 
-(* source of fresh unification variables, mutable counter is hidden *)
-module Fresh : sig
-  val uniquei : int
-  val freshen : name -> name
-  val freshk : name -> kind
-  val fresh : mask -> name -> typ
-end = struct
-  let freshi = ref (-1)
-  let uniquei = freshi := !freshi + 1; !freshi
-  let freshen (x : name) = x ^ string_of_int uniquei
-  let freshk (x : name) = KVar (uref (KUnsolved (freshen x)))
-  let fresh (msk : mask) (x : name) = Inserted (uref (Unsolved (freshen x)), freshk (freshen "k"), msk)
-end
-include Fresh
+(* fresh unification variables *)
+let freshk (x : name) = KVar (uref (KUnsolved (freshen x)))
+let fresh (msk : mask) (x : name) = Inserted (uref (Unsolved (freshen x)), freshk (freshen "k"), msk)
 
 (* choose between 'global' unification, which solves regular metavariables,
    and 'local' unification (aka LHS unification) which solves variables from the environment *)

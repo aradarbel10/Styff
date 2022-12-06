@@ -1,6 +1,7 @@
 open Util
+open Syntax.Raw
+open Syntax.Core
 open Pretty
-open Expr
 open Eval
 open Unif
 open Scene

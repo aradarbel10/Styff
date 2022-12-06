@@ -1,0 +1,17 @@
+data Nat : ∗ where
+| zero : Nat
+| succ : Nat → Nat
+
+data List : ∗ → ∗ where
+| nil  : {A : ∗} → List A
+| (::) : {A : ∗} → A → List A → List A
+
+data Nested : ∗ → ∗ where
+| eps   : {A : ∗} → Nested A
+| (:<:) : {A : ∗} → A → Nested (List A) → Nested A
+
+let rec nested_length {A : ∗} (nl : Nested A) : Nat =
+  match nl with
+  | eps       . zero
+  | a :<: nl' . succ (nested_length {List A} nl')
+  end

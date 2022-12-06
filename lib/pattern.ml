@@ -1,4 +1,5 @@
-open Expr
+open Syntax.Core
+open Syntax.Raw
 open Unif
 open Eval
 open Scene

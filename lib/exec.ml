@@ -1,5 +1,5 @@
 open Typer
-open Expr
+open Syntax.Raw
 open Lexer
 open Pretty
 open Eval

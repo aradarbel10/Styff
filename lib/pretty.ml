@@ -1,5 +1,5 @@
 open Batteries.Uref
-open Expr
+open Syntax.Core
 open Eval
 
 let string_of_base : base -> string = function

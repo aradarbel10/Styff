@@ -15,14 +15,21 @@ A type checker based on system F-omega with pattern unifiction, implicit paramet
 - data declarations
     - GADT syntax
     - shallow pattern matching
-        - scoped type variables
+        - scoped type variables (without "dot patterns")
         - matching on indexed types
 - user-defined infix operator
-    - infix type formers (but no constructors yet)
+    - infix type formers
 
 ### Future Ideas/TODOs
-- pattern match escape checking on existentials
+- builtins
+    - int, bool, float
+    - plus, minus, times, div (for both ints and floats)
+    - and, or, if
+    - comparisons
 
+    - builtin declaration (maybe like `{@ BUILTIN nat: Nat, zero, succ @}`)
+
+- datatype parameters
 - bring back `∀` syntax sugar
 
 - error reporting
@@ -30,7 +37,6 @@ A type checker based on system F-omega with pattern unifiction, implicit paramet
     - from typechecking
 - logging (for debugging and good errors)
 
-- annotate core types with kinds
 - small & super simple module system and stdlib
 
 - backend

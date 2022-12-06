@@ -1,5 +1,5 @@
 open Batteries.Uref
-open Expr
+open Syntax.Core
 
 exception IndexOutOfScope
 exception AppNonAbs

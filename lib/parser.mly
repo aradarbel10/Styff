@@ -1,5 +1,5 @@
 %{
-open Expr
+open Syntax.Raw
 
 type argument =
 | InstArg of rtyp

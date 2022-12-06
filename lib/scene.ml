@@ -1,4 +1,4 @@
-open Expr
+open Syntax.Core
 
 (* all typechecking occurs inside a [scene]:
 
