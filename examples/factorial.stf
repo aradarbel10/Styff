@@ -1,0 +1,3 @@
+postulate (-) : int → int → int
+postulate ( * ) : int → int → int
+let rec factorial : int → int = λn. n * factorial (n - 1)

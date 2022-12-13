@@ -16,8 +16,7 @@ type typ =
 | Prod of typ list
 | Base of base
 
-type expr = naked_expr * typ (* all expressions are annotated *)
-and naked_expr =
+and expr =
 | Var of name
 | Lam of name * typ * expr
 | Tlam of name * kind * expr

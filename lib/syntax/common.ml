@@ -2,12 +2,12 @@ type name = string
 
 (* source of fresh names, mutable counter is hidden *)
 module Fresh : sig
-  val uniquei : int
+  val uniquei : unit -> int
   val freshen : name -> name
 end = struct
   let freshi = ref (-1)
-  let uniquei = freshi := !freshi + 1; !freshi
-  let freshen (x : name) = x ^ string_of_int uniquei
+  let uniquei () = freshi := !freshi + 1; !freshi
+  let freshen (x : name) = x ^ string_of_int (uniquei ())
 end
 include Fresh
 

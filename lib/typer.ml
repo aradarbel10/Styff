@@ -99,10 +99,9 @@ and infer_let_type (scn : scene) (x : name) (_ : rkind option) (t : rtyp) : scen
 (* given an expression, return its core representation and infer its type *)
 let rec infer (scn : scene) : rexpr -> expr * vtyp = function
 | RAnn (e, t) ->
-  let (e, te) = insert_unless scn @@ infer scn e in
   let t = eval scn.env (is_type scn t) in
-  unify' scn t te;
-  (e, te)
+  let e = check scn e t in
+  (e, t)
 
 | RVar x ->
   begin match assoc_idx x scn.ctx with
@@ -176,7 +175,7 @@ and check (scn : scene) (e : rexpr) (t : vtyp) : expr = match e, force t with
 
 | RTlam (x, None, e), VForall (x', c) ->
   let ret_typ = cinst_at scn.height x' c in
-  let e = check (assume_typ scn x c.knd (*todo kind annotation on x'*) `EUnsolved) e ret_typ in
+  let e = check (assume_typ scn x c.knd `EUnsolved) e ret_typ in
   Tlam (x, c.knd, e)
 
 | RLet (rc, x, ps, t, e, rest), t_rest ->

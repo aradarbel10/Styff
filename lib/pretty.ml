@@ -2,6 +2,8 @@ open Batteries.Uref
 open Syntax.Core
 open Eval
 
+open Compile
+
 let string_of_base : base -> string = function
 | `Int -> "int"
 | `Bool -> "bool"
@@ -46,6 +48,11 @@ and string_of_vtype (nms : name list) (t : vtyp) : string =
   let t = quote (height nms) t in
   string_of_type nms t
 
+and string_of_pattern (PCtor (ctor, args)) : string =
+  match args with
+  | [] -> ctor
+  | PVar  v :: args -> string_of_pattern (PCtor (ctor, args)) ^ " " ^ v
+  | PTvar v :: args -> string_of_pattern (PCtor (ctor, args)) ^ " {" ^ v ^ "}"
 and string_of_expr (nms : name list) (tps : name list) (expr : expr) : string =
   let rec go_lam (nms : name list) (tps : name list) = function
   | Lam (x, t, e) -> "(" ^ print_name x ^ " : " ^ string_of_type tps t ^ ") " ^ go_lam (x :: nms) tps e
@@ -54,12 +61,7 @@ and string_of_expr (nms : name list) (tps : name list) (expr : expr) : string =
   and go_branch (nms : name list) (tps : name list) (((PCtor (_, args) as pat), bod) : pattern * expr) : string =
     let nms = List.fold_left (fun nms -> function | PVar  v -> v :: nms | _ -> nms) nms args in
     let tps = List.fold_left (fun tps -> function | PTvar v -> v :: tps | _ -> tps) tps args in
-    go_pat pat ^ " . " ^ go 0 nms tps bod
-  and go_pat (PCtor (ctor, args)) : string =
-    match args with
-    | [] -> ctor
-    | PVar  v :: args -> go_pat (PCtor (ctor, args)) ^ " " ^ v
-    | PTvar v :: args -> go_pat (PCtor (ctor, args)) ^ " {" ^ v ^ "}"
+    string_of_pattern pat ^ " . " ^ go 0 nms tps bod
   and go (p : int) (nms : name list) (tps : name list) = function
   | Var (Idx i) -> print_name (List.nth nms i)
   | Lam _ | Tlam _ as e -> parens (p > 0) @@ "λ" ^ go_lam nms tps e
@@ -79,10 +81,38 @@ and string_of_expr (nms : name list) (tps : name list) (expr : expr) : string =
 and string_of_kind (k : kind) : string =
   let rec go (p : int) (k : kind) : string =
     match forcek k with
-    | Star -> "*"
+    | Star -> "∗"
     | KArrow (lk, rk) -> parens (p > 1) @@ go 2 lk ^ " → " ^ go 1 rk
     | KVar kv ->
       match uget kv with
       | KSolved k -> go p k
       | KUnsolved x -> "?" ^ x
   in go 0 k
+
+
+let string_of_Zkind : Z.kind -> string =
+  let rec go (p : int) (k : Z.kind) : string =
+    match k with
+    | Star -> "∗"
+    | KArrow (lk, rk) -> parens (p > 1) @@ go 2 lk ^ " → " ^ go 1 rk
+  in go 0
+
+let rec string_of_Avalue (v : A.value) : string =
+  match v with
+  | Var x -> x
+  | Lit l -> string_of_lit l
+  | Lam (xs, e) -> "λ" ^ String.concat " " xs ^ ".{ " ^ string_of_Aterm e ^ " }"
+and string_of_Aexpr (e : A.expr) : string =
+  match e with
+  | Tup vs -> "⟨" ^ (String.concat ", " (List.map string_of_Avalue vs)) ^ "⟩"
+  | App (e, es) -> string_of_Avalue e
+    ^ "(" ^ String.concat ", " (List.map string_of_Avalue es) ^ ")"
+  | ProjAt (e, i) -> "(" ^ string_of_Avalue e ^ ")." ^ string_of_int i
+and string_of_Aterm (e : A.term) : string =
+  match e with
+  | Let (x, e, e') -> "\nlet " ^ x ^ " = " ^ string_of_Aexpr e ^ " in" ^ string_of_Aterm e'
+  | Match (v, bs) -> "\nmatch " ^ string_of_Avalue v ^ "with"
+    ^ String.concat "" (List.map (fun (p, e) -> "\n| " ^ string_of_Apattern p ^ " . " ^ string_of_Aterm e) bs)
+    ^ "end"
+  | Ret v -> "\nret " ^ string_of_Avalue v
+and string_of_Apattern ((ctor, args) : A.pattern) = ctor ^ " " ^ String.concat " " args

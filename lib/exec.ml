@@ -4,15 +4,22 @@ open Lexer
 open Pretty
 open Eval
 open Scene
+open Zonk
+open Compile
 
 let exec_stmt (scn : scene) (s : stmt) : scene =
   match s with
   | Def (rc, x, ps, t, e) ->
     let (scn', scn, e, t) = infer_let scn rc x ps t e in
     let e = norm_expr scn.env e in
+    let z = zonk_expr (names scn) (tps scn) e in
+    let a = to_anf z ret in
+    let c = closure_conv a in
     print_endline ("let " ^ x ^ "\n\t : " ^
       string_of_vtype (tps scn) t ^ "\n\t = " ^
-      string_of_expr (names scn) (tps scn) e);
+      string_of_expr (names scn) (tps scn) e ^
+      "\ncompiles to...\n\n" ^ string_of_Aterm a ^
+      "\ncloses to...\n\n" ^ string_of_Aterm c);
     scn'
   | TDef (x, k, t) ->
     let (scn', _, vt, k) = infer_let_type scn x k t in

@@ -1,113 +1,119 @@
 open Syntax.Common
 module Z = Syntax.Zonked
 
-module K = struct
-  type typ =
-  | Qvar of name
-  | Cont of (name * Z.kind) list * typ list (* → ⊥  in CPS the functions don't return *)
-  | TApp of typ * typ
-  | Prod of typ list
-  | Base of base
+module Set = BatSet
 
-  type value = naked_value * typ
-  and naked_value =
-  | Var of name
+module A = struct
+  type pattern = name * name list
+  type value =
   | Lit of lit
-  | Tup of value list
-  | Abs of name * (name * Z.kind) list * (name * typ) list * expr
-  and rhs =
-  | Assgn of value
-  | ProjAt of value * int
+  | Var of name
+  | Lam of name list * term
   and expr =
-  | Let of name * rhs * expr
-  | Call of value * typ list * value list
-  | Match of value * (pattern * expr) list
-  | Halt of value
+  | App of value * value list
+  | Tup of value list
+  | ProjAt of value * int
+  and term =
+  | Let of name * expr * term
+  | Match of value * (pattern * term) list
+  | Ret of value
 end
+let ret v = A.Ret v
+let rhs v = A.App (v, [])
 
-let rec cps_of_type : Z.typ -> K.typ = function
-| Qvar x -> Qvar x
-| Arrow (lt, rt) -> Cont ([], [(cps_of_type lt); (cps_of_cont rt)])
-| Forall (x, k, t) -> Cont ([(x, k)], [(cps_of_cont t)])
-| Base b -> Base b
-| TApp (t1, t2) -> TApp (cps_of_type t1, cps_of_type t2)
-| TAbs _ -> failwith "todo"
-| Prod ts -> Prod (List.map cps_of_type ts)
-and cps_of_cont (t : Z.typ) : K.typ = Cont ([], [(cps_of_type t)])
-
-let rec cps_of_expr ((e, e_typ) : Z.expr) (kont : K.value -> K.expr) : K.expr =
-  let (let*) = cps_of_expr in
+let rec to_anf (e : Z.expr) (c : A.value -> A.term) : A.term =
+  let ( let* ) = to_anf in
+  let erase_pat (PCtor (ctor, args)) : A.pattern =
+    (ctor, List.filter_map (function | PVar x -> Some x | PTvar _ -> None) args)
+  in
 
   match e with
-  | Lit l ->
-    let e_typ = cps_of_type e_typ in
-    kont @@ (Lit l, e_typ)
-
-  | Lam (x, x_typ, bod) ->
-    let x_typ = cps_of_type x_typ in
-    let bod_typ = cps_of_cont (snd bod) in
-    let c = freshen "c" in
-    let cont = intern_call c bod_typ in
-    let bod = cps_of_expr bod cont in
-    kont @@ (Abs ("", [], [x, x_typ; c, bod_typ], bod), cps_of_type e_typ)
-
-  | Tlam (x, x_knd, bod) ->
-    let bod_typ = cps_of_cont (snd bod) in
-    let c = freshen "c" in
-    let cont = intern_call c bod_typ in
-    let bod = cps_of_expr bod cont in
-    kont @@ (Abs ("", [x, x_knd], [c, bod_typ], bod), cps_of_type e_typ)
-
-  | Var x ->
-    kont @@ (Var x, cps_of_type e_typ)
-
+  | Var x -> c @@ Var x
+  | Lit l -> c (Lit l)
+  | Lam (x, _, e) -> c @@ Lam ([x], to_anf e ret)
+  | Tlam (_, _, e) -> to_anf e c
   | App (e1, e2) ->
-    let kont = reify_cont kont e_typ in
     let* v1 = e1 in
     let* v2 = e2 in
-    Call (v1, [], [v2; kont])
-
-  | Inst (e, t) ->
-    let kont = reify_cont kont e_typ in
+    let x = freshen "v" in
+    Let (x, App (v1, [v2]), 
+      c @@ Var x)
+  | Inst (e, _) -> to_anf e c
+  | Let (x, e, e') ->
     let* v = e in
-    let t = cps_of_type t in
-    Call (v, [t], [kont])
-
+    Let (x, rhs v, to_anf e' c)
+  | Match (e, bs) ->
+    let* v = e in
+    let bs = List.map (fun (p, b) -> (erase_pat p, to_anf b c)) bs in
+    Match (v, bs)
   | Tup es ->
-    let rec go (es : Z.expr list) (vacc : K.value list) (tacc : K.typ list) =
+    let rec go_tup vs es : A.term =
       match es with
-      | [] -> kont (K.Tup vacc, K.Prod tacc)
+      | [] ->
+        let v = freshen "v" in
+        Let (v, Tup (List.rev vs), c (Var v))
       | e :: es ->
         let* v = e in
-        let v_typ = snd v in
-        go es (v :: vacc) (v_typ :: tacc)
-    in
-    go es [] []
-
-  | Match (e, branches) ->
-    let* v = e in
-    let branches = List.map (fun (pat, branch) ->
-      (pat, cps_of_expr branch kont)) branches in
-    Match (v, branches)
-
+        go_tup (v :: vs) es
+    in go_tup [] es
   | ProjAt (e, i) ->
-    let* v = e in
     let x = freshen "x" in
-    let x_val = (K.Var x, cps_of_type e_typ) in
-    Let (x, ProjAt (v, i), kont x_val)
+    let* v = e in
+    Let (x, ProjAt (v, i), c (Var x))
 
-  | Let (x, body, rest) ->
-    let* body = body in
-    Let (x, Assgn body, cps_of_expr rest kont)
 
-and reify_cont (kont : K.value -> K.expr) (param_typ : Z.typ) : K.value =
-  let v = freshen "v" in
-  let param_typ = cps_of_type param_typ in
-  let bod = kont (Var v, param_typ) in
-  let cont = K.Abs ("", [], [(v, param_typ)], bod) in
-  let cont_typ = K.Cont ([], [param_typ]) in
-  (cont, cont_typ)
-and intern_call (c : name) (t : K.typ) : K.value -> K.expr = fun v -> Call ((K.Var c, t), [], [v])
+let free_vars (xs : name list) (e : A.term) : name list =
+  let rec go_term : A.term -> name Set.t = function
+  | Let (x, e, t) -> Set.union (Set.remove x (go_expr e)) (go_term t)
+  | Match (v, bs) ->
+    let v_bs = List.map (fun (p, b) -> Set.diff (go_term b) (go_pat p)) bs in
+    List.fold_left Set.union (go_value v) v_bs
+  | Ret v -> go_value v
+  and go_expr : A.expr -> name Set.t = function
+  | App (v, vs) ->
+    let v_vs = List.map go_value vs in
+    List.fold_left Set.union (go_value v) v_vs
+  | Tup vs -> List.fold_left Set.union Set.empty (List.map go_value vs)
+  | ProjAt (v, _) -> go_value v
+  and go_value : A.value -> name Set.t = function
+  | Lit _ -> Set.empty
+  | Var x -> Set.singleton x
+  | Lam (xs, t) -> Set.diff (go_term t) (Set.of_list xs)
+  and go_pat ((_, args) : A.pattern) : name Set.t = Set.of_list args
+  in
+  Set.to_list (go_value (Lam (xs, e)))
 
-let cps_of_prog (e : Z.expr) : K.expr =
-  cps_of_expr e (fun e -> Halt e)
+let closure_conv =
+
+  let rec go_term : A.term -> A.term = function
+  | Let (x, e, t) -> go_expr e @@ fun v -> A.Let (x, v, go_term t)
+  | Match (v, bs) -> Match (go_value v, List.map (fun (p, b) -> (p, go_term b)) bs)
+  | Ret v -> Ret (go_value v)
+  and go_expr (e : A.expr) (c : A.expr -> A.term) : A.term =
+    match e with
+    | App (v, vs) ->
+      let v = go_value v in
+      let vs = List.map go_value vs in
+
+      let code = freshen "c" in
+      let env = freshen "e" in
+
+      Let (code, ProjAt (v, 1),
+      Let (env, ProjAt (v, 2),
+      c (App (Var code, Var env :: vs))))
+    | Tup vs -> c @@ Tup (List.map go_value vs)
+    | ProjAt (v, i) -> c @@ ProjAt (go_value v, i)
+  and go_value : A.value -> A.value = function
+  | Lit l -> Lit l
+  | Var x -> Var x
+  | Lam (xs, t) ->
+    let fvs = List.mapi (fun i v -> (i, v)) (free_vars xs t) in
+    let t = go_term t in
+
+    let env = freshen "n" in
+
+    (* unpack entire environment in function body *)
+    let body = List.fold_right (fun (i, v) bod -> A.Let (v, ProjAt (Var env, i), bod)) fvs t in
+    Lam (env :: xs, body)
+  in
+  go_term
