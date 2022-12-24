@@ -112,6 +112,7 @@ let vnorm (env : env) (t : vtyp) : vtyp = eval env (quote (height env) t)
 let rec norm_expr (env : env) (e : expr) : expr =
   match e with
   | Var i -> Var i
+  | Ctor (i, es) -> Ctor (i, List.map (norm_arg env) es)
   | Lam (x, t, e) -> Lam (x, norm env t, norm_expr env e)
   | Tlam (x, k, e) ->
     let v = vqvar (height env) in
@@ -132,3 +133,7 @@ and norm_branch (env : env) (((PCtor (_, args) as pat), bod) : pattern * expr) :
     end
   in
   (pat, norm_expr (env_of_pattern args env) bod)
+and norm_arg (env : env) (arg : arg) : arg =
+  match arg with
+  | `TmArg e -> `TmArg (norm_expr env e)
+  | `TpArg t -> `TpArg (norm env t)

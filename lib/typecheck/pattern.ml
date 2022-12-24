@@ -21,22 +21,22 @@ exception UnexpectedTArgPattern
 - modified scene with all pattern-variables bound
 - the type of the pattern (return-type of the constructor)
 *)
-let rec infer_pattern (scn : scene) (PCtor (ctor, args) : pattern) : scene * pattern * vtyp =
+let rec infer_pattern (scn : scene) (RPCtor (ctor, args) : rpattern) : scene * pattern * vtyp =
   match args with
   | [] ->
-    begin match List.assoc_opt ctor scn.ctx with
-    | Some t -> (scn, PCtor (ctor, []), t)
+    begin match assoc_idx ctor scn.ctx with
+    | Some (i, t) -> (scn, PCtor (Idx i, []), t)
     | None -> failwith "absurd!" (* ctors will be verified before going into branches *)
     end
   | PVar  v :: args ->
-    let (scn, PCtor (ctor, args), t) = insert_pattern @@ infer_pattern scn (PCtor (ctor, args)) in
+    let (scn, PCtor (ctor, args), t) = insert_pattern @@ infer_pattern scn (RPCtor (ctor, args)) in
     begin match t with
     | VArrow (lt, rt) -> (assume scn v lt, PCtor (ctor, PVar v :: args), rt)
     | VForall _ -> failwith "absurd!" (* would be eliminated by [insert_pattern] *)
     | _ -> raise TooManyArgsInPattern
     end
   | PTvar v :: args ->
-    let (scn, PCtor (ctor, args), t) = infer_pattern scn (PCtor (ctor, args)) in
+    let (scn, PCtor (ctor, args), t) = infer_pattern scn (RPCtor (ctor, args)) in
     begin match t with
     | VForall (_, c) -> (assume_typ scn v c.knd `EUnsolved, PCtor (ctor, PTvar v :: args), cinst_at scn.height v c)
     | _ -> raise UnexpectedTArgPattern
@@ -76,7 +76,7 @@ let norm_branch_scn (PCtor (_, args) : pattern) (scn : scene) : scene =
   let ctx = go scn.ctx scn.env args in
   {scn with ctx = ctx}
 
-let scene_of_pattern (scn : scene) (scrut_typ : vtyp) (pat : pattern) : pattern * scene =
+let scene_of_pattern (scn : scene) (scrut_typ : vtyp) (pat : rpattern) : pattern * scene =
   let (scn, pat, pat_typ) = insert_pattern @@ infer_pattern scn pat in
   let scn = norm_branch_scn pat @@ local_unify pat_typ scrut_typ scn in
   (pat, scn)
@@ -95,8 +95,8 @@ let check_same_parent (scn : scene) (ctors : name list) : name =
       then parent
       else raise UnrelatedCases
 
-let check_coverage (scn : scene) (branches : (pattern * rexpr) list) : unit =
-  let ctors = List.map (fun (PCtor (x, _), _) -> x) branches in
+let check_coverage (scn : scene) (branches : (rpattern * rexpr) list) : unit =
+  let ctors = List.map (fun (RPCtor (x, _), _) -> x) branches in
   let parent = check_same_parent scn ctors in
   match List.assoc_opt parent scn.ctors with
   | None -> failwith "absurd!" (* parent returned from scene must exist *)

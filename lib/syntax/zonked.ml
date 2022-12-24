@@ -16,8 +16,10 @@ type typ =
 | Prod of typ list
 | Base of base
 
+type pattern = PCtor of name * pat_arg list
 and expr =
 | Var of name
+| Ctor of name * arg list
 | Lam of name * typ * expr
 | Tlam of name * kind * expr
 | App of expr * expr
@@ -27,3 +29,11 @@ and expr =
 | Tup of expr list
 | ProjAt of expr * int
 | Lit of lit
+| BinOp of expr * binop * expr
+and arg = [`TmArg of expr | `TpArg of typ]
+
+
+and stmt =
+| Def of bool * name * typ * expr
+| TDef of name * kind * typ
+and prog = stmt list

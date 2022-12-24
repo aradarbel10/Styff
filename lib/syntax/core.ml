@@ -5,8 +5,10 @@ include Common
 
    uses debruijn indices to trivialize α-equivalence
 *)
+type pattern = PCtor of idx * pat_arg list
 type expr =
 | Var of idx
+| Ctor of idx * arg list
 | Lam of name * typ * expr
 | Tlam of name * kind * expr
 | App of expr * expr
@@ -14,6 +16,7 @@ type expr =
 | Let of bool * name * typ * expr * expr
 | Match of expr * (pattern * expr) list
 | Lit of lit
+and arg = [`TmArg of expr | `TpArg of typ]
 
 and typ =
 | Tvar of tvar uref * kind
@@ -30,6 +33,7 @@ and bdr = B of typ
 and ebound = [`EBound | `EDefed]
 and esolved = [`ESolved | `EUnsolved]
 and mask = ebound list
+
 
 (* semantic domain (values), used for normalization
 
@@ -53,6 +57,8 @@ and head =
 | VTvar of tvar uref * kind
 and spine = vtyp list
 and clos = {knd : kind; env : env; bdr : bdr} (* [bdr] lives in a scene of height |env|+1, the extra value is the closure's parameter *)
+
+and vparam = [`TpParam of kind | `TmParam of vtyp]
 
 and env = (name * esolved * ebound * vtyp) list
 (*
@@ -79,9 +85,6 @@ and kvar =
 | KUnsolved of name
 
 
-let unLvl (Lvl i) = i
-let inc (Lvl i) = Lvl (i + 1)
-let lvl2idx (Lvl hi : lvl) (Lvl i) = Idx (hi - i - 1)
 let lookup (Idx i) (env : env) = List.nth_opt env i
 let height env : lvl = Lvl (List.length env)
 let lookup_lvl (i : lvl) (env : env) = lookup (lvl2idx (height env) i) env

@@ -22,3 +22,12 @@ let rec mem_once (y : 'a) (xs : 'a list) : bool =
     if x = y
       then not (List.mem y xs)
       else mem_once y xs
+
+let rec split_at (i : int) (xs : 'a list) : ('a list * 'a list) option =
+  if i < 0 then raise (Invalid_argument "split_at") else
+  match xs with
+  | [] -> None
+  | x :: xs ->
+    match split_at (i - 1) xs with
+    | None -> None
+    | Some (front, back) -> Some (x :: front, back)

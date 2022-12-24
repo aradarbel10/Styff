@@ -46,6 +46,7 @@ rule read = parse
   | "(*"        { read_comment lexbuf }
   | "infer"     { INFER }
   | "postulate" { POSTULATE }
+  | "builtin"   { BUILTIN }
   | "type"      { TYPE }
   | "data"      { DATA }
   | "where"     { WHERE }

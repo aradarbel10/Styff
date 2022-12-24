@@ -1,6 +1,6 @@
 (library
   (name styff)
-  (libraries batteries syntax))
+  (libraries batteries syntax typecheck backend))
 
 (ocamllex lexer)
 (menhir

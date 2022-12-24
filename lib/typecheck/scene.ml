@@ -22,6 +22,7 @@ type scene = {
 
   ctors : (name * name list) list;
   parents : (name * name) list;
+  ctor_params : (name * vparam list) list;
 
   height : lvl;
   tctx : tctx;
@@ -30,7 +31,7 @@ type scene = {
   trace : trace;
 }
 
-let empty_scene : scene = {ctx = []; ctors = []; parents = []; height = Lvl 0; tctx = []; env = []; trace = []}
+let empty_scene : scene = {ctx = []; ctors = []; parents = []; ctor_params = []; height = Lvl 0; tctx = []; env = []; trace = []}
 let names scn = List.map fst scn.ctx
 let tps scn = List.map fst scn.tctx
 
@@ -55,6 +56,11 @@ let define_typ (scn : scene) (x : name) (t : vtyp) (k : kind) : scene =
 
 let mask_of (scn : scene) : mask =
   List.map (fun (_, _, bound, _) -> bound) scn.env
+
+let define_ctor_params (scn : scene) (ctor : name) (params : vparam list) : scene =
+  {scn with
+    ctor_params = (ctor, params) :: scn.ctor_params
+  }
 
 let define_ctors (scn : scene) (x : name) (ctors : name list) : scene =
   {scn with

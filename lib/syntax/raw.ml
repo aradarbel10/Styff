@@ -19,6 +19,7 @@ type rparam =
 | RParam of name * rtyp option
 | RTParam of name * rkind option
 
+type rpattern = RPCtor of name * pat_arg list
 type rexpr =
 | RVar of name
 | RAnn of rexpr * rtyp
@@ -27,10 +28,10 @@ type rexpr =
 | RApp of rexpr * rexpr
 | RInst of rexpr * rtyp
 | RLet of bool * name * rparam list * rtyp option * rexpr * rexpr
-| RMatch of rexpr * (pattern * rexpr) list
+| RMatch of rexpr * (rpattern * rexpr) list
 | RLit of lit
 
-type rctor = Ctor of {nam : name; t : rtyp}
+type rctor = RCtor of {nam : name; t : rtyp}
 
 type stmt =
 | Def of bool * name * rparam list * rtyp option * rexpr
@@ -39,4 +40,5 @@ type stmt =
 | TInfer of name * rtyp
 | Postulate of name * rtyp
 | DataDecl of name * rkind option * rctor list
+| BuiltIn of name * string
 type prog = stmt list

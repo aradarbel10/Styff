@@ -55,7 +55,7 @@ let joinTeles : (name list * annotation) list -> rparam list =
 %token <string> INFIXL7
 %token <string> INFIX8 
 %token <string> INFIXL9
-%token INFER TYPE POSTULATE DATA WHERE PIPE MATCH WITH END
+%token INFER TYPE POSTULATE BUILTIN DATA WHERE PIPE MATCH WITH END
 %token LAM ARROW LPAREN RPAREN LCURLY RCURLY COLON DOT LET REC EQ IN HOLE
 %token BOOL INT TRUE FALSE STAR
 
@@ -103,6 +103,7 @@ stmt:
   | INFER; x=decl_name; EQ; e=expr { Infer (x, e) }
   | INFER; TYPE; x=decl_name; EQ; t=typ { TInfer (x, t) }
   | POSTULATE; x=decl_name; COLON; t=typ { Postulate (x, t) }
+  | BUILTIN; x=decl_name; EQ; n=IDENT { BuiltIn (x, n) }
   | d=data_decl { d }
 
 expr:
@@ -138,7 +139,7 @@ tele:
 bind_annot:
   | COLON; t=typ { t }
 e_atom:
-  | x=IDENT { RVar x }
+  | x=decl_name { RVar x }
   | LPAREN; e=expr; RPAREN { e }
   | n=NUM { RLit (`Int n) }
   | TRUE { RLit (`Bool true) }
@@ -188,13 +189,13 @@ data_decl:
     { DataDecl (x, k, cs) }
 ctor_decl:
   | PIPE; x=decl_name; COLON; t=typ
-    { Ctor {nam = x; t = t} }
+    { RCtor {nam = x; t = t} }
 
 branch:
   | PIPE; p=pattern; DOT; e=expr { (p, e) }
 pattern:
-  | ctor=decl_name; args=list(pattern_arg); { PCtor (ctor, List.rev args) }
-  | lhs=IDENT; op=infix_op; rhs=IDENT { PCtor (op, [PVar rhs; PVar lhs]) }
+  | ctor=decl_name; args=list(pattern_arg); { RPCtor (ctor, List.rev args) }
+  | lhs=IDENT; op=infix_op; rhs=IDENT { RPCtor (op, [PVar rhs; PVar lhs]) }
 pattern_arg:
   | v=IDENT { PVar v }
   | LCURLY; v=IDENT; RCURLY { PTvar v }

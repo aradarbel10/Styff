@@ -20,7 +20,7 @@ let rec nat_add (a : Nat) (b : Nat) : Nat =
 let rec list_concat {T : ∗} (xs : List T) (ys : List T) : List T =
   match xs with
   | nil . ys
-  | x :: xs' . x :: list_concat xs' ys
+  | x :: xs' . x :: (list_concat xs' ys)
   end
 
 (* GADTs *)

@@ -30,6 +30,32 @@ let infer_lit : lit -> base = function
 let clos_of (scn : scene) (t : vtyp) (k : kind) : clos =
   {knd = k; env = scn.env; bdr = B (quote (inc scn.height) t)}
 
+(* construct lambdas around a ctor to make it fully saturated
+   this is a special case of uncurrying, but the backend currently doesn't do that *)
+let lams_ctor (hi' : lvl) (Idx ctor : idx) (params : vparam list) =
+  let rec args_of_params : vparam list -> arg list * int * int = function
+  | [] -> [], 0, 0
+  | `TmParam _ :: ps ->
+    let ps, tpdepth, tmdepth = args_of_params ps in
+    `TmArg (Var (Idx tmdepth)) :: ps, tpdepth, tmdepth+1
+  | `TpParam _ :: ps ->
+    let ps, tpdepth, tmdepth = args_of_params ps in
+    `TpArg (Qvar (Idx tpdepth)) :: ps, tpdepth+1, tmdepth
+  in
+
+  let rec go (hi : lvl) : vparam list -> expr = function
+  | [] ->
+    let args, _, tmdepth = args_of_params params in
+    Ctor (Idx (ctor + tmdepth), args)
+  | `TmParam t :: ps ->
+    let a = freshen "a" in
+    Lam (a, quote hi t, go hi ps)
+  | `TpParam k :: ps ->
+    let b = freshen "b" in
+    Tlam (b, k, go (inc hi) ps)
+  in go hi' params
+
+
 (* to allow implicit instantiation, we sometimes insert an application for the user *)
 let insert (scn : scene) (e, t : expr * vtyp) : expr * vtyp =
   match force t with
@@ -106,7 +132,10 @@ let rec infer (scn : scene) : rexpr -> expr * vtyp = function
 | RVar x ->
   begin match assoc_idx x scn.ctx with
   | None -> raise (UndefinedVar x)
-  | Some (i, t) -> (Var (Idx i), t)
+  | Some (i, t) ->
+    match List.assoc_opt x scn.ctor_params with
+    | None -> Var (Idx i), t
+    | Some params -> insert scn (lams_ctor scn.height (Idx i) params, t)
   end
 
 | RLam (x, xt, e) ->
@@ -144,7 +173,7 @@ let rec infer (scn : scene) : rexpr -> expr * vtyp = function
   (Inst (e, t), capp x clos (eval scn.env t))
 
 | RLet (rc, x, ps, t, e, rest) ->
-  let (scn, _, e, te) = infer_let scn rc x ps t e in
+  let (scn, e, te) = infer_let scn rc x ps t e in
   let (rest, trest) = infer (assume scn x te) rest in
   (Let (rc, x, quote scn.height te, e, rest), trest)
 
@@ -179,7 +208,7 @@ and check (scn : scene) (e : rexpr) (t : vtyp) : expr = match e, force t with
   Tlam (x, c.knd, e)
 
 | RLet (rc, x, ps, t, e, rest), t_rest ->
-  let (scn, _, e, te) = infer_let scn rc x ps t e in
+  let (scn, e, te) = infer_let scn rc x ps t e in
   let rest = check scn rest t_rest in
   Let (rc, x, quote scn.height te, e, rest)
 
@@ -195,71 +224,77 @@ and check (scn : scene) (e : rexpr) (t : vtyp) : expr = match e, force t with
   e
 
 (* given a scene, a list of parameters, and a return type, return
-- a new scene, with the bound params in scope
+- a scene transformer, binding the new params into scope
 - the whole type of the function being defined
 - just the return type of the function being defined (evaluated under the new scene)
+- a HOF to wrap the definition's body with lambdas bindings its params
 *)
-and process_params (scn : scene) (ps : rparam list) (ret_typ : rtyp option) : scene * typ * vtyp =
+and process_params (scn : scene) (ps : rparam list) (ret_typ : rtyp option) : (scene -> scene) * typ * vtyp * (expr -> expr) =
   match ps with
   | [] ->
     let ret_typ = maybe_rtyp scn "ret" ret_typ in
-    (scn, ret_typ, eval scn.env ret_typ)
+    ((fun s -> s), ret_typ, eval scn.env ret_typ, fun e -> e)
   | RParam (x, t) :: ps ->
     let t = maybe_rtyp scn x t in
-    let scn = assume scn x (eval scn.env t) in
-    let (scn, all_typ, ret_typ) = process_params scn ps ret_typ in
-    (scn, Arrow (t, all_typ), ret_typ)
+    let vt = eval scn.env t in
+    let scn = assume scn x vt in
+    let (mkscn, all_typ, ret_typ, lams) = process_params scn ps ret_typ in
+    ((fun s -> mkscn (assume s x vt)), Arrow (t, all_typ), ret_typ, fun e -> Lam (x, t, lams e))
   | RTParam (x, k) :: ps ->
     let k = maybe_rkind x k in
     let scn = assume_typ scn x k `EUnsolved in
-    let (scn, all_typ, ret_typ) = process_params scn ps ret_typ in
-    (scn, Forall (x, k, B all_typ), ret_typ)
+    let (mkscn, all_typ, ret_typ, lams) = process_params scn ps ret_typ in
+    ((fun s -> mkscn (assume_typ s x k `EUnsolved)), Forall (x, k, B all_typ), ret_typ, fun e -> Tlam (x, k, lams e))
 
 (* compute the scene representing a [let]'s inner scope, with all parameters bound.
   also returns the entire binding's type, and just its return type (without parameters)
 *)
-and scene_of_let (scn : scene) (rc : bool) (x : name) (ps : rparam list) (ret_typ : rtyp option) : scene * vtyp * vtyp =
-  let (inner_scn, all_typ, ret_typ) = process_params scn ps ret_typ in
+and scene_of_let (scn : scene) (rc : bool) (x : name) (ps : rparam list) (ret_typ : rtyp option) : scene * vtyp * vtyp * (expr -> expr) =
+  let (mkscn, all_typ, ret_typ, lams) = process_params scn ps ret_typ in
   let all_typ = eval scn.env all_typ in
-  let inner_scn = if rc then assume inner_scn x all_typ else inner_scn in
-  (inner_scn, all_typ, ret_typ)
-
-(* returns first the scope after the [let], and second the [let]'s inner scope *)
-and infer_let (scn : scene) (rc : bool) (x : name) (ps : rparam list) (t : rtyp option) (e : rexpr) : scene * scene * expr * vtyp =
   (* if the binding is recursive, extend the scene with it *)
-  let (inner_scn, all_typ, ret_typ) = scene_of_let scn rc x ps t in
-  let e = check inner_scn e ret_typ in
-  (assume scn x all_typ, inner_scn, e, all_typ)
+  let inner_scn = mkscn @@ if rc then assume scn x all_typ else scn in
+  (inner_scn, all_typ, ret_typ, lams)
 
-and infer_branch (scn : scene) (scrut_typ : vtyp) (pat : pattern) (branch : rexpr) : pattern * expr * vtyp =
+and infer_let (scn : scene) (rc : bool) (x : name) (ps : rparam list) (t : rtyp option) (e : rexpr) : scene * expr * vtyp =
+  let (inner_scn, all_typ, ret_typ, lams) = scene_of_let scn rc x ps t in
+  let e = lams @@ check inner_scn e ret_typ in
+  (assume scn x all_typ, e, all_typ)
+
+and infer_branch (scn : scene) (scrut_typ : vtyp) (pat : rpattern) (branch : rexpr) : pattern * expr * vtyp =
   let (pat, scn) = scene_of_pattern scn scrut_typ pat in
   let (branch, branch_typ) = infer scn branch in
   (pat, branch, branch_typ)
 
-and check_branch (scn : scene) (scrut_typ : vtyp) (pat : pattern) (branch : rexpr) (ret_typ : vtyp) : pattern * expr =
+and check_branch (scn : scene) (scrut_typ : vtyp) (pat : rpattern) (branch : rexpr) (ret_typ : vtyp) : pattern * expr =
   let (pat, scn) = scene_of_pattern scn scrut_typ pat in
   let ret_typ = vnorm scn.env ret_typ in
   let branch = check scn branch ret_typ in
   (pat, branch)
 
-(* get the last type in a chain of arrows (including foralls) *)
-let rec return_type (hi : lvl) : vtyp -> vtyp = function
-| VArrow (_, t) -> return_type hi t
-| VForall (x, c) -> return_type (inc hi) (cinst_at hi x c)
-| t -> t
+(* get the last type in a chain of arrows (including foralls as arrows), and a list of the params *)
+let rec return_type (hi : lvl) : vtyp -> vtyp * vparam list = function
+| VArrow (lt, rt) ->
+  let ret, params = return_type hi rt
+  in ret, `TmParam lt :: params
+| VForall (x, c) ->
+  let ret, params = return_type (inc hi) (cinst_at hi x c)
+  in ret, `TpParam c.knd :: params
+| t -> t, []
 
 (* modify the scene with a new data declaration and its constructors *)
 exception BadCtorReturn
-let declare_ctor (parent : lvl) (scn : scene) (Ctor {nam; t} : rctor) : scene =
+let declare_ctor (parent : lvl) (scn : scene) (RCtor {nam; t} : rctor) : scene =
   let t = is_type scn t in
   let vt = eval scn.env t in
   let rett = return_type scn.height (eval scn.env t) in (* ctor's return type must be the data it belongs to *)
   match rett with
-  | VNeut (VQvar i, _) when parent = i -> assume scn nam vt
+  | VNeut (VQvar i, _), params when parent = i ->
+    define_ctor_params (assume scn nam vt) nam params
   | _ -> raise BadCtorReturn
 let declare_data (scn : scene) (x : name) (k : rkind option) (ctors : rctor list) =
   let k = maybe_rkind (freshen "k") k in
   let parent = scn.height in (* slightly hacky: get the height before [assume_typ], will be the lvl of the type just defined *)
   let scn = assume_typ scn x k `ESolved in
   let scn = List.fold_left (declare_ctor parent) scn ctors in
-  define_ctors scn x (List.map (fun (Ctor {nam; _}) -> nam) ctors)
+  define_ctors scn x (List.map (fun (RCtor {nam; _}) -> nam) ctors)
