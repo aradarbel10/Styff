@@ -194,8 +194,8 @@ ctor_decl:
 branch:
   | PIPE; p=pattern; DOT; e=expr { (p, e) }
 pattern:
-  | ctor=decl_name; args=list(pattern_arg); { RPCtor (ctor, List.rev args) }
-  | lhs=IDENT; op=infix_op; rhs=IDENT { RPCtor (op, [PVar rhs; PVar lhs]) }
+  | ctor=decl_name; args=list(pattern_arg); { RPCtor (ctor, args) }
+  | lhs=IDENT; op=infix_op; rhs=IDENT { RPCtor (op, [PVar lhs; PVar rhs]) }
 pattern_arg:
   | v=IDENT { PVar v }
   | LCURLY; v=IDENT; RCURLY { PTvar v }

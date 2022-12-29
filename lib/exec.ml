@@ -6,8 +6,8 @@ open Typecheck.Eval
 open Typecheck.Scene
 
 module Z = Syntax.Zonked
-open Backend.Js
 open Backend.Zonk
+open Backend.Js
 
 let exec_stmt (scn : scene) (s : stmt) : scene * Z.prog =
   match s with

@@ -21,31 +21,27 @@ exception UnexpectedTArgPattern
 - modified scene with all pattern-variables bound
 - the type of the pattern (return-type of the constructor)
 *)
-let rec infer_pattern (scn : scene) (RPCtor (ctor, args) : rpattern) : scene * pattern * vtyp =
-  match args with
-  | [] ->
-    begin match assoc_idx ctor scn.ctx with
-    | Some (i, t) -> (scn, PCtor (Idx i, []), t)
-    | None -> failwith "absurd!" (* ctors will be verified before going into branches *)
-    end
-  | PVar  v :: args ->
-    let (scn, PCtor (ctor, args), t) = insert_pattern @@ infer_pattern scn (RPCtor (ctor, args)) in
-    begin match t with
-    | VArrow (lt, rt) -> (assume scn v lt, PCtor (ctor, PVar v :: args), rt)
-    | VForall _ -> failwith "absurd!" (* would be eliminated by [insert_pattern] *)
-    | _ -> raise TooManyArgsInPattern
-    end
-  | PTvar v :: args ->
-    let (scn, PCtor (ctor, args), t) = infer_pattern scn (RPCtor (ctor, args)) in
-    begin match t with
-    | VForall (_, c) -> (assume_typ scn v c.knd `EUnsolved, PCtor (ctor, PTvar v :: args), cinst_at scn.height v c)
-    | _ -> raise UnexpectedTArgPattern
-    end
-(* the pattern equivalent of [insert], adds implicit instantiations as far as the type allows *)
-and insert_pattern ((scn, (PCtor (ctor, args) as pat), t) : scene * pattern * vtyp) : scene * pattern * vtyp =
-  match force t with
-  | VForall (x, c) -> (assume_typ scn x c.knd `EUnsolved, PCtor (ctor, PTvar x :: args), cinst_at scn.height x c)
-  | t -> (scn, pat, t)
+let infer_pattern (scn : scene) (RPCtor (ctor, args) : rpattern) : scene * pattern * vtyp =
+  match assoc_idx ctor scn.ctx with
+  | None -> failwith "absurd!" (* ctors will be verified before going into branches *)
+  | Some (i, typ_all) ->
+    let rec go (scn, acc : scene * pat_arg list) (args : pat_arg list) (typ : vtyp) : scene * pat_arg list * vtyp =
+      match args, force typ with
+      | PTvar v :: args, VForall (_, c) ->
+        let rest_typ = cinst_at scn.height v c in
+        let scn = assume_typ scn v c.knd `EUnsolved in
+        go (scn, PTvar v :: acc) args rest_typ
+      | args, (VForall (x, _) as typ) ->
+        go (scn, acc) (PTvar x :: args) typ (* insert artificial param-tvar and retry with same typ *)
+      | PTvar _ :: _, _ -> raise UnexpectedTArgPattern
+      | PVar v :: args, VArrow (lt, rt) ->
+        let scn = assume scn v lt in
+        go (scn, PVar v :: acc) args rt
+      | PVar _ :: _, _ -> raise TooManyArgsInPattern
+      | [], typ -> scn, List.rev acc, typ
+    in
+    let scn, args, ret_typ = go (scn, []) (args) typ_all
+    in scn, PCtor (Idx i, args), ret_typ
 
 (*
   when inferring a scene type, we use bound tvars in the types of bound vars.
@@ -56,28 +52,20 @@ and insert_pattern ((scn, (PCtor (ctor, args) as pat), t) : scene * pattern * vt
     the solution of which is referenced within types in the ctx. then this normalization is redundant
 *)
 let norm_branch_scn (PCtor (_, args) : pattern) (scn : scene) : scene =
-  let rec go (ctx : ctx) (env : env) (args : pat_arg list) : ctx =
-    match args with
-    | [] -> ctx
-    | PVar  _ :: args ->
-      begin match ctx with
-      | [] -> failwith "absurd!"
-      | (x, t) :: ctx ->
-        let ctx = go ctx env args in
-        let t = eval env (quote (height env) t) in
-        (x, t) :: ctx
-      end
-    | PTvar _ :: args ->
-      begin match env with
-      | [] -> failwith "absurd!"
-      | _ :: env -> go ctx env args
-      end
-  in
-  let ctx = go scn.ctx scn.env args in
-  {scn with ctx = ctx}
+  let rec go (args : pat_arg list) (ctx : ctx) (env : env) : ctx =
+    match args, ctx, env with
+    | [], _, _ -> ctx
+    | PVar  _ :: args, (x, t) :: ctx, env ->
+      let ctx = go args ctx env in
+      let t = vnorm env t in
+      (x, t) :: ctx
+    | PTvar _ :: args, ctx, _ :: env ->
+      go args ctx env
+    | _ -> failwith "absurd!" (* args and scene will be synchronized *)
+  in {scn with ctx = go (List.rev args) scn.ctx scn.env}
 
 let scene_of_pattern (scn : scene) (scrut_typ : vtyp) (pat : rpattern) : pattern * scene =
-  let (scn, pat, pat_typ) = insert_pattern @@ infer_pattern scn pat in
+  let (scn, pat, pat_typ) = infer_pattern scn pat in
   let scn = norm_branch_scn pat @@ local_unify pat_typ scrut_typ scn in
   (pat, scn)
 

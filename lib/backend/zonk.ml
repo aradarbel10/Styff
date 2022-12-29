@@ -64,11 +64,11 @@ let zonk_expr nms tps =
     let ctor = List.nth nms i in
     let rec go (nms : name list) (tps : name list) (ps : pat_arg list) (full : pat_arg list) =
       match ps with
-      | [] -> nms, tps, Z.PCtor (ctor, full)
+      | [] -> nms, tps, Z.PCtor (ctor, List.rev full)
       | PVar x :: ps ->
         let x = sanitize x in
-        go (x :: nms) tps ps (full @ [PVar x])
-      | PTvar x :: ps -> go nms (x :: tps) ps (full @ [PTvar x])
+        go (x :: nms) tps ps (PVar x :: full)
+      | PTvar x :: ps -> go nms (x :: tps) ps (PTvar x :: full)
     in go nms tps ps []
 
   and go_branches nms tps bs =

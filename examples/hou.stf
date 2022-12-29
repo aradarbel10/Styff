@@ -1,0 +1,14 @@
+(* higher order unification test *)
+
+postulate m : {f : ∗ → ∗} → f bool
+postulate n : int
+let same_type {a : ∗} (x : a) (y : a) : bool = true
+
+let test = same_type (m {λb. int}) n
+
+(*
+fails on:
+
+let test' = same_type m n
+let test'' = same_type (m {λb. bool}) n
+*)

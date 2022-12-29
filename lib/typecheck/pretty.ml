@@ -47,10 +47,9 @@ and string_of_vtype (nms : name list) (t : vtyp) : string =
   string_of_type nms t
 
 and string_of_pattern nms (PCtor (ctor, args)) : string =
-  match args with
-  | [] -> List.nth nms (unIdx ctor)
-  | PVar  v :: args -> string_of_pattern nms (PCtor (ctor, args)) ^ " " ^ v
-  | PTvar v :: args -> string_of_pattern nms (PCtor (ctor, args)) ^ " {" ^ v ^ "}"
+  let strs = List.map (function | PVar v -> v | PTvar v -> "{" ^ v ^ "}") args in
+  let str = String.concat " " strs in
+  List.nth nms (unIdx ctor) ^ " " ^ str
 and string_of_expr (nms : name list) (tps : name list) (expr : expr) : string =
   let rec go_lam (nms : name list) (tps : name list) = function
   | Lam (x, t, e) -> "(" ^ print_name x ^ " : " ^ string_of_type tps t ^ ") " ^ go_lam (x :: nms) tps e
@@ -64,7 +63,7 @@ and string_of_expr (nms : name list) (tps : name list) (expr : expr) : string =
   | `TmArg e -> go 0 nms tps e
   | `TpArg t -> "{" ^ string_of_type tps t ^ "}"
   and go (p : int) (nms : name list) (tps : name list) = function
-  | Var (Idx i) -> print_name (List.nth nms i)
+  | Var (Idx i) -> print_name (List.nth nms i) ^ "#" ^ string_of_int i
   | Ctor (Idx i, es) -> print_name (List.nth nms i) ^ "(" ^ String.concat ", " (List.map (go_arg nms tps) es) ^ ")"
   | Lam _ | Tlam _ as e -> parens (p > 0) @@ "λ" ^ go_lam nms tps e
   | App (e1, e2) -> parens (p > 2) @@ go 2 nms tps e1 ^ " " ^ go 3 nms tps e2

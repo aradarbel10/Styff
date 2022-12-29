@@ -1,0 +1,7 @@
+directory _build/default/lib/.styff.objs/byte
+directory _build/default/lib/typecheck/.typecheck.objs/byte
+directory _build/default/lib/syntax/.syntax.objs/byte
+directory _build/default/lib/backend/.backend.objs/byte
+directory _build/default/lib/util/.util.objs/byte
+goto 0
+set print_length 1000

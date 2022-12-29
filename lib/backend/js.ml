@@ -27,7 +27,7 @@ let ret e = [JS.Ret e]
 
 let js_of_zonked (prog : Z.prog) : JS.block =
   let erase_pat (args) : name list =
-    List.filter_map (function | PVar x -> Some x | PTvar _ -> None) args
+    List.map (function | PVar x -> x | PTvar _ -> freshen "_") args
   in
   let rec go_stmt : Z.stmt -> JS.block = function
   | Def (_, x, _, e) ->
@@ -77,7 +77,7 @@ let js_of_zonked (prog : Z.prog) : JS.block =
     | Ctor (c, es) ->
       let rec go_ctor vs es : JS.block =
         match es with
-        | [] -> k @@ TagWith (c, vs)
+        | [] -> k @@ TagWith (c, List.rev vs)
         | `TmArg e :: es ->
           let* v = e in
           go_ctor (v :: vs) es
