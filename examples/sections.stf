@@ -1,0 +1,22 @@
+let a = 5
+
+section l where
+  let b = a
+end
+
+let c = l.b
+
+section m where
+  let d = c
+  let e = d
+
+  section n where
+    let f = a
+  end
+  let g = e
+end
+
+let h = c
+let i = m.d
+let j = m.g
+let k = m.n.f

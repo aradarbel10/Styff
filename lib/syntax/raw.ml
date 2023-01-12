@@ -9,36 +9,37 @@ type rtyp =
 | RQvar of name
 | RArrow of rtyp * rtyp
 | RTapp of rtyp * rtyp
-| RTAbs of name * rkind option * rtyp
-| RTLet of name * rkind option * rtyp * rtyp
-| RForall of name * rkind option * rtyp
+| RTAbs of string * rkind option * rtyp
+| RTLet of string * rkind option * rtyp * rtyp
+| RForall of string * rkind option * rtyp
 | RBase of base
 | RHole
 
 type rparam =
-| RParam of name * rtyp option
-| RTParam of name * rkind option
+| RParam of string * rtyp option
+| RTParam of string * rkind option
 
 type rpattern = RPCtor of name * pat_arg list
 type rexpr =
 | RVar of name
 | RAnn of rexpr * rtyp
-| RLam of name * rtyp option * rexpr
-| RTlam of name * rkind option * rexpr
+| RLam of string * rtyp option * rexpr
+| RTlam of string * rkind option * rexpr
 | RApp of rexpr * rexpr
 | RInst of rexpr * rtyp
-| RLet of bool * name * rparam list * rtyp option * rexpr * rexpr
+| RLet of bool * string * rparam list * rtyp option * rexpr * rexpr
 | RMatch of rexpr * (rpattern * rexpr) list
 | RLit of lit
 
-type rctor = RCtor of {nam : name; t : rtyp}
+type rctor = RCtor of {nam : string; t : rtyp}
 
 type stmt =
-| Def of bool * name * rparam list * rtyp option * rexpr
-| TDef of name * rkind option * rtyp
-| Infer of name * rexpr
-| TInfer of name * rtyp
-| Postulate of name * rtyp
-| DataDecl of name * rkind option * rctor list
-| BuiltIn of name * string
-type prog = stmt list
+| Def of bool * string * rparam list * rtyp option * rexpr
+| TDef of string * rkind option * rtyp
+| Infer of string * rexpr
+| TInfer of string * rtyp
+| Postulate of string * rtyp
+| DataDecl of string * rkind option * rctor list
+| BuiltIn of string * string
+| Section of string * prog
+and prog = stmt list

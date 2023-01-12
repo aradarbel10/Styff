@@ -1,6 +1,7 @@
 open Batteries.Uref
 open Syntax.Core
 open Eval
+open Scene
 
 let string_of_base : base -> string = function
 | `Int -> "int"
@@ -10,73 +11,60 @@ let string_of_lit : lit -> string = function
 | `Bool true -> "true"
 | `Bool false -> "false"
 
-let parens (b : bool) (s : string) : string =
-  if b then "(" ^ s ^ ")" else s
-
-let symbols = ['!'; '@'; '#'; '$'; '%'; '^'; '&'; '*'; '-'; '+'; ';'; '?'; '/'; '<'; '>'; ','; '~'; '='; '.'; ':'; '|']
-let print_name (x : name) : string =
-  if List.mem x.[0] symbols
-    then parens true x
-    else x
-
-let rec string_of_type (nms : name list) (t : typ) : string =
-  let rec go (p : int) (nms : name list) = function (* [p]recedence printing *)
+let rec string_of_type (scp : scope) (t : typ) : string =
+  let rec go (p : int) (scp : scope) = function (* [p]recedence printing *)
   | Tvar (tv, _) ->
     begin match uget tv with
-    | Solved t -> "(" ^ string_of_vtype [] t ^ ")"
+    | Solved t -> "(" ^ string_of_vtype empty_scope t ^ ")"
     | Unsolved x -> "?" ^ x
     end
-  | Qvar (Idx i) -> print_name (List.nth nms i)
-  | Inserted (tv, k, msk) -> go_inserted p nms tv k msk
-  | Arrow (lt, rt) -> parens (p > 1) @@ go 2 nms lt ^ " → " ^ go 1 nms rt
-  | Tapp (t1, t2) -> parens (p > 2) @@ go 2 nms t1 ^ " " ^ go 3 nms t2
-  | TLet (x, k, t, rest) -> parens (p > 0) @@ "let type " ^ print_name x ^ " : " ^ string_of_kind k ^ " = " ^ go 0 nms t ^ " in " ^ go 0 (x :: nms) rest
-  | TAbs (x, k, B t) -> parens (p > 0) @@ "λ(" ^ print_name x ^ " : " ^ string_of_kind k ^ "). " ^ go 0 (x :: nms) t
-  | Forall (x, k, B t) -> parens (p > 0) @@ "{" ^ print_name x ^ " : " ^ string_of_kind k ^ "} → " ^ go 0 (x :: nms) t
+  | Qvar i -> string_of_name (Scope.ith_type scp i)
+  | Inserted _ -> "?inserted"
+  | Arrow (lt, rt) -> parens (p > 1) @@ go 2 scp lt ^ " → " ^ go 1 scp rt
+  | Tapp (t1, t2) -> parens (p > 2) @@ go 2 scp t1 ^ " " ^ go 3 scp t2
+  | TLet (x, k, t, rest) -> parens (p > 0) @@ "let type " ^ x ^ " : " ^ string_of_kind k
+    ^ " = " ^ go 0 scp t ^ " in " ^ go 0 (Scope.tpush scp [x]) rest
+  | TAbs (x, k, B t) -> parens (p > 0) @@ "λ(" ^ x ^ " : " ^ string_of_kind k ^ "). " ^ go 0 (Scope.tpush scp [x]) t
+  | Forall (x, k, B t) -> parens (p > 0) @@ "{" ^ x ^ " : " ^ string_of_kind k ^ "} → " ^ go 0 (Scope.tpush scp [x]) t
   | Base b -> string_of_base b
-  and go_inserted (p : int) (nms : name list) (tv : tvar uref) (k : kind) (msk : mask) =
-    match nms, msk, forcek k with
-    | [], [], k -> go p nms (Tvar (tv, k))
-    | x :: nms, `EBound :: msk, KArrow (_, rk) -> parens (p > 2) @@ go_inserted 2 nms tv rk msk ^ " " ^ print_name x
-    | _ :: _  , `EBound :: _  , _ -> raise (Failure "impossible - ill-kinded meta annotation")
-    | _ :: nms, `EDefed :: msk, k -> go_inserted 2 nms tv k msk
-    | _ -> raise (Failure "impossible - can't print ill-lengthed inserted meta")
-  in go 0 nms t
-and string_of_vtype (nms : name list) (t : vtyp) : string =
-  let t = quote (height nms) t in
-  string_of_type nms t
+  in go 0 scp t
+and string_of_vtype (scp : scope) (t : vtyp) : string =
+  let t = quote (Lvl (Sectioned.height scp.prefix scp.tps)) t in
+  string_of_type scp t
 
-and string_of_pattern nms (PCtor (ctor, args)) : string =
+and string_of_pattern (scp : scope) (PCtor (ctor, args)) : string =
   let strs = List.map (function | PVar v -> v | PTvar v -> "{" ^ v ^ "}") args in
   let str = String.concat " " strs in
-  List.nth nms (unIdx ctor) ^ " " ^ str
-and string_of_expr (nms : name list) (tps : name list) (expr : expr) : string =
-  let rec go_lam (nms : name list) (tps : name list) = function
-  | Lam (x, t, e) -> "(" ^ print_name x ^ " : " ^ string_of_type tps t ^ ") " ^ go_lam (x :: nms) tps e
-  | Tlam (x, k, e) -> "{" ^ print_name x ^ " : " ^ string_of_kind k ^ "} " ^ go_lam nms (x :: tps) e
-  | e -> ". " ^ go 0 nms tps e
-  and go_branch (nms : name list) (tps : name list) (((PCtor (_, args) as pat), bod) : pattern * expr) : string =
-    let nms' = List.fold_left (fun nms -> function | PVar  v -> v :: nms | _ -> nms) nms args in
-    let tps' = List.fold_left (fun tps -> function | PTvar v -> v :: tps | _ -> tps) tps args in
-    string_of_pattern nms pat ^ " . " ^ go 0 nms' tps' bod
-  and go_arg (nms : name list) (tps : name list) : arg -> string = function
-  | `TmArg e -> go 0 nms tps e
-  | `TpArg t -> "{" ^ string_of_type tps t ^ "}"
-  and go (p : int) (nms : name list) (tps : name list) = function
-  | Var (Idx i) -> print_name (List.nth nms i) ^ "#" ^ string_of_int i
-  | Ctor (Idx i, es) -> print_name (List.nth nms i) ^ "(" ^ String.concat ", " (List.map (go_arg nms tps) es) ^ ")"
-  | Lam _ | Tlam _ as e -> parens (p > 0) @@ "λ" ^ go_lam nms tps e
-  | App (e1, e2) -> parens (p > 2) @@ go 2 nms tps e1 ^ " " ^ go 3 nms tps e2
-  | Inst (e, t) -> parens (p > 2) @@ go 2 nms tps e ^ " {" ^ string_of_type tps t ^ "}"
+  string_of_name (Scope.ith scp ctor) ^ " " ^ str
+and string_of_expr (scp : scope) (expr : expr) : string =
+  let rec go_lam (scp : scope) = function
+  | Lam (x, t, e) -> "(" ^ x ^ " : " ^ string_of_type scp t ^ ") " ^ go_lam (Scope.push scp [x]) e
+  | Tlam (x, k, e) -> "{" ^ x ^ " : " ^ string_of_kind k ^ "} " ^ go_lam (Scope.tpush scp [x]) e
+  | e -> ". " ^ go 0 scp e
+  and go_branch (scp : scope) (((PCtor (_, args) as pat), bod) : pattern * expr) : string =
+    let scp' = List.fold_left (fun scp -> function
+      | PVar  v -> Scope.push scp [v]
+      | PTvar v -> Scope.tpush scp [v]) scp args in
+    string_of_pattern scp pat ^ " . " ^ go 0 scp' bod
+  and go_arg (scp : scope) : arg -> string = function
+  | `TmArg e -> go 0 scp e
+  | `TpArg t -> "{" ^ string_of_type scp t ^ "}"
+  and go (p : int) (scp : scope) = function
+  | Var i -> string_of_name (Scope.ith scp i) ^ "#" ^ string_of_int (unIdx i)
+  | Ctor (i, es) -> string_of_name (Scope.ith scp i)
+    ^ "(" ^ String.concat ", " (List.map (go_arg scp) es) ^ ")"
+  | Lam _ | Tlam _ as e -> parens (p > 0) @@ "λ" ^ go_lam scp e
+  | App (e1, e2) -> parens (p > 2) @@ go 2 scp e1 ^ " " ^ go 3 scp e2
+  | Inst (e, t) -> parens (p > 2) @@ go 2 scp e ^ " {" ^ string_of_type scp t ^ "}"
   | Let (rc, x, t, e, rest) ->
-    parens (p > 0) @@ "let " ^ print_name x ^ " : " ^ string_of_type tps t
-    ^ " = " ^ go 0 (if rc then x :: nms else nms) tps e ^ " in " ^ go 0 (x :: nms) tps rest
+    parens (p > 0) @@ "let " ^ x ^ " : " ^ string_of_type scp t
+    ^ " = " ^ go 0 (if rc then Scope.push scp [x] else scp) e ^ " in " ^ go 0 (Scope.push scp [x]) rest
   | Match (s, bs) ->
-    parens (p > 0) @@ "match " ^ go 0 nms tps s ^ " with { " ^
-    String.concat " | " (List.map (go_branch nms tps) bs)
+    parens (p > 0) @@ "match " ^ go 0 scp s ^ " with { " ^
+    String.concat " | " (List.map (go_branch scp) bs)
     ^ " }"
   | Lit l -> string_of_lit l
-  in go 0 nms tps expr
+  in go 0 scp expr
 
 
 and string_of_kind (k : kind) : string =

@@ -31,3 +31,9 @@ let rec split_at (i : int) (xs : 'a list) : ('a list * 'a list) option =
     match split_at (i - 1) xs with
     | None -> None
     | Some (front, back) -> Some (x :: front, back)
+
+let rec drop (n : int) (xs : 'a list) : 'a list =
+  if n = 0 then xs else
+  match xs with
+  | [] -> []
+  | _ :: xs -> drop (n - 1) xs

@@ -4,15 +4,15 @@ module Z = Syntax.Zonked
 module JS = struct
   type block = stmt list
   and stmt =
-  | DeclVar of name
-  | AssgnVar of name * expr
+  | DeclVar of string
+  | AssgnVar of string * expr
   | Assgn of name * expr
   | IfTagElse of expr * (name * block) list
-  | Destruct of name list * expr
+  | Destruct of string list * expr
   | Ret of expr
   and expr =
   | Var of name
-  | Lam of name * block
+  | Lam of string * block
   | App of expr * expr
   | Block of block
   | Tup of expr list
@@ -26,8 +26,8 @@ end
 let ret e = [JS.Ret e]
 
 let js_of_zonked (prog : Z.prog) : JS.block =
-  let erase_pat (args) : name list =
-    List.map (function | PVar x -> x | PTvar _ -> freshen "_") args
+  let erase_pat (args) : string list =
+    List.map (function | PVar x -> x | PTvar _ -> freshen_str "_") args
   in
   let rec go_stmt : Z.stmt -> JS.block = function
   | Def (_, x, _, e) ->
@@ -49,11 +49,11 @@ let js_of_zonked (prog : Z.prog) : JS.block =
       k @@ App (v, Null)
     | Let (x, e, rest) ->
       let* v = e in
-      Assgn (x, v)
+      Assgn ([x], v)
       :: go_expr rest k
     | Match (e, bs) ->
-      let res = freshen "r" in
-      let scrut = freshen "v" in
+      let res = freshen_str "r" in
+      let scrut = freshen ["v"] in
       let go_branch (Z.PCtor (ctor, vars), branch) : name * JS.block =
         ctor,
         Destruct (erase_pat vars, Var scrut)
@@ -64,7 +64,7 @@ let js_of_zonked (prog : Z.prog) : JS.block =
       Assgn (scrut, v)
       :: DeclVar res
       :: IfTagElse (Var scrut, List.map go_branch bs)
-      :: go_expr (Var res) k
+      :: go_expr (Var [res]) k
     | Tup es ->
       let rec go_tup vs es : JS.block =
         match es with
@@ -101,14 +101,14 @@ let string_of_js =
   and go_stmt (indent : int) (block : JS.stmt) : string =
     match block with
     | Assgn (x, e) ->
-      String.make indent '\t' ^ "let " ^ x ^ " = " ^ go_expr indent e ^ ";\n"
+      String.make indent '\t' ^ "let " ^ string_of_name x ^ " = " ^ go_expr indent e ^ ";\n"
     | AssgnVar (x, e) ->
       String.make indent '\t' ^ x ^ " = " ^ go_expr indent e ^ ";\n"
     | DeclVar x ->
       String.make indent '\t' ^ "var " ^ x ^ ";\n"
     | IfTagElse (e, opts) ->
       let opts = List.map (fun (lbl, bod) ->
-        "(" ^ go_expr indent e ^ "[0] === \"" ^ lbl ^ "\")" ^ "{\n"
+        "(" ^ go_expr indent e ^ "[0] === \"" ^ string_of_name lbl ^ "\")" ^ "{\n"
         ^ go_block (indent + 1) bod
         ^ String.make indent '\t' ^ "}"
         ) opts
@@ -119,7 +119,7 @@ let string_of_js =
     | Ret e ->
       String.make indent '\t' ^ "return " ^ go_expr indent e ^ ";\n"
   and go_expr (indent : int) : JS.expr -> string = function
-  | Var x -> x
+  | Var x -> string_of_name x
   | Lam (x, e) -> "(" ^ x ^ " => " ^ go_expr indent (Block e) ^ ")"
   | App (e1, e2) -> go_expr indent e1 ^ "(" ^ go_expr indent e2 ^ ")"
   | Block b ->
@@ -128,7 +128,7 @@ let string_of_js =
       String.make indent '\t' ^ "}"
   | Tup es -> "[" ^ String.concat ", " (List.map (go_expr indent) es) ^ "]"
   | ProjAt (e, i) -> go_expr indent e ^ "[" ^ string_of_int i ^ "]"
-  | TagWith (x, es) -> "[\"" ^ x ^ "\"" ^ String.concat "" (List.map (fun e -> ", " ^ go_expr indent e) es) ^ "]"
+  | TagWith (x, es) -> "[\"" ^ string_of_name x ^ "\"" ^ String.concat "" (List.map (fun e -> ", " ^ go_expr indent e) es) ^ "]"
   | Lit l -> go_lit l
   | Null -> "null"
   | BinOp (e1, op, e2) -> go_expr indent e1 ^ " " ^ go_binop op ^ " " ^ go_expr indent e2

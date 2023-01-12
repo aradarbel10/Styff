@@ -2,16 +2,17 @@ open Batteries.Uref
 open Syntax.Common
 module S = Syntax.Core
 module Z = Syntax.Zonked
-open Typecheck.Eval
-
+open! Typecheck.Eval
+open Typecheck.Scene
 
 (* identifiers in styff may contain quotes (') and symbols (user-defined operators)
    which must be eliminated towards the backend. *)
-let sanitize (nm : name) : name =
+let sanitize_str (nm : string) : string =
   let allowed : char -> bool = function
   | 'a'..'z' | 'A'..'Z' | '0'..'9' -> true
   | _ -> false
-  in if String.for_all allowed nm then nm else freshen "nm"
+  in if String.for_all allowed nm then nm else freshen_str "nm"
+let sanitize : name -> name = List.map sanitize_str
 
 
 exception UnsolvedKVar
@@ -25,59 +26,58 @@ let rec zonk_kind (k : S.kind) : Z.kind =
     | KSolved k -> zonk_kind k
     | KUnsolved _ -> raise UnsolvedKVar
 
-let zonk_type (tps : name list) (t : S.typ) : Z.typ =
-  let rec go (tps : name list) (t : S.typ) : Z.typ =
+let zonk_type : scope -> S.typ -> Z.typ =
+  let rec go (scp : scope) (t : S.typ) : Z.typ =
     match t with
     | Tvar (tv, _) ->
       begin match uget tv with
-      | Solved t -> go tps (quote (S.height tps) t)
+      | Solved t -> go scp (quote (S.height scp.tps) t)
       | Unsolved _ -> raise UnsolvedTVar
       end
     | Inserted _ -> failwith "absurd! normalized types cannot contain inserted metas"
-    | Qvar (Idx i) -> Qvar (List.nth tps i)
-    | Arrow (lt, rt) -> Arrow (go tps lt, go tps rt)
-    | Tapp (t1, t2) -> TApp (go tps t1, go tps t2)
-    | TAbs (x, k, B t) -> TAbs (x, zonk_kind k, go (x::tps) t)
+    | Qvar i -> Qvar (Scope.ith_type scp i)
+    | Arrow (lt, rt) -> Arrow (go scp lt, go scp rt)
+    | Tapp (t1, t2) -> TApp (go scp t1, go scp t2)
+    | TAbs (x, k, B t) -> TAbs (x, zonk_kind k, go (Scope.tpush scp [x]) t)
     | TLet _ -> failwith "absurd! normalized types cannot contain type-level let bindings"
-    | Forall (x, k, B t) -> Forall (x, zonk_kind k, go (x::tps) t)
+    | Forall (x, k, B t) -> Forall (x, zonk_kind k, go (Scope.tpush scp [x]) t)
     | Base b -> Base b
-  in go tps t
+  in go
 
-exception UnannotatedExpr
-let zonk_expr nms tps =
-  let rec go (nms : name list) (tps : name list) (e : S.expr) : Z.expr =
+let zonk_expr : scope -> S.expr -> Z.expr =
+  let rec go (scp : scope) (e : S.expr) : Z.expr =
     match e with
-    | Var (Idx i) -> Var (List.nth nms i)
-    | Ctor (Idx i, es) -> Ctor (List.nth nms i, List.map (go_arg nms tps) es)
-    | Lam (x, t, e) -> Lam (x, zonk_type tps t, go (sanitize x :: nms) tps e)
-    | Tlam (x, k, e) -> Tlam (x, zonk_kind k, go nms (sanitize x :: tps) e)
-    | App (e1, e2) -> App (go nms tps e1, go nms tps e2)
-    | Inst (e, t) -> Inst (go nms tps e, zonk_type tps t)
+    | Var i -> Var (Scope.ith scp i)
+    | Ctor (i, es) -> Ctor (Scope.ith scp i, List.map (go_arg scp) es)
+    | Lam (x, t, e) -> Lam (x, zonk_type scp t, go (Scope.push scp (sanitize [x])) e)
+    | Tlam (x, k, e) -> Tlam (x, zonk_kind k, go (Scope.tpush scp (sanitize [x])) e)
+    | App (e1, e2) -> App (go scp e1, go scp e2)
+    | Inst (e, t) -> Inst (go scp e, zonk_type scp t)
     | Let (rc, x, _, e, e') ->
-      let x = sanitize x in
-      let nms = if rc then x :: nms else nms in
-      Let (x, go nms tps e, go (x :: nms) tps e')
-    | Match (e, branches) -> Match (go nms tps e, go_branches nms tps branches)
+      let x = sanitize_str x in
+      let scp = if rc then Scope.push scp [x] else scp in
+      Let (x, go scp e, go (Scope.push scp [x]) e')
+    | Match (e, branches) -> Match (go scp e, go_branches scp branches)
     | Lit l -> Lit l
 
-  and scope_pattern nms tps (PCtor (Idx i, ps) : S.pattern) =
-    let ctor = List.nth nms i in
-    let rec go (nms : name list) (tps : name list) (ps : pat_arg list) (full : pat_arg list) =
+  and scope_pattern (scp : scope) (PCtor (i, ps) : S.pattern) =
+    let ctor = Scope.ith scp i in
+    let rec go (scp : scope) (ps : pat_arg list) (full : pat_arg list) =
       match ps with
-      | [] -> nms, tps, Z.PCtor (ctor, List.rev full)
+      | [] -> scp, Z.PCtor (ctor, List.rev full)
       | PVar x :: ps ->
-        let x = sanitize x in
-        go (x :: nms) tps ps (PVar x :: full)
-      | PTvar x :: ps -> go nms (x :: tps) ps (PTvar x :: full)
-    in go nms tps ps []
+        let x = sanitize_str x in
+        go (Scope.push scp [x]) ps (PVar x :: full)
+      | PTvar x :: ps ->
+        go (Scope.tpush scp [x]) ps (PTvar x :: full)
+    in go scp ps []
 
-  and go_branches nms tps bs =
-    List.map (fun (p, e) -> let nms, tps, p = scope_pattern nms tps p in (p, go nms tps e)) bs
-  and go_arg nms tps : S.arg -> Z.arg = function
-  | `TmArg e -> `TmArg (go nms tps e)
-  | `TpArg t -> `TpArg (zonk_type tps t)
-  in go nms tps
-
+  and go_branches (scp : scope) bs =
+    List.map (fun (p, e) -> let scp, p = scope_pattern scp p in (p, go scp e)) bs
+  and go_arg (scp : scope) : S.arg -> Z.arg = function
+  | `TmArg e -> `TmArg (go scp e)
+  | `TpArg t -> `TpArg (zonk_type scp t)
+  in go
 
 (* constant folding (beta reduction) on the zonked language *)
 type env = (name * Z.expr) list
@@ -109,13 +109,13 @@ let beta_fold_expr : Z.expr -> Z.expr =
   | App (e1, e2) ->
     let e2 = go env tenv e2 in
     begin match go env tenv e1 with
-    | Lam (x, _, e) -> go ((x, e2) :: env) tenv e
+    | Lam (x, _, e) -> go (([x], e2) :: env) tenv e
     | e1 -> App (e1, e2)
     end
   | Inst (e, t) ->
     let t = beta_fold_typ tenv t in
     begin match go env tenv e with
-    | Tlam (x, _, e) -> go env ((x, t) :: tenv) e
+    | Tlam (x, _, e) -> go env (([x], t) :: tenv) e
     | e -> Inst (e, t)
     end
   | Let (x, e, rest) -> Let (x, go env tenv e, go env tenv rest)

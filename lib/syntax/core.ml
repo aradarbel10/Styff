@@ -9,11 +9,11 @@ type pattern = PCtor of idx * pat_arg list
 type expr =
 | Var of idx
 | Ctor of idx * arg list
-| Lam of name * typ * expr
-| Tlam of name * kind * expr
+| Lam of string * typ * expr
+| Tlam of string * kind * expr
 | App of expr * expr
 | Inst of expr * typ
-| Let of bool * name * typ * expr * expr
+| Let of bool * string * typ * expr * expr
 | Match of expr * (pattern * expr) list
 | Lit of lit
 and arg = [`TmArg of expr | `TpArg of typ]
@@ -24,9 +24,9 @@ and typ =
 | Qvar of idx
 | Arrow of typ * typ
 | Tapp of typ * typ
-| TAbs of name * kind * bdr
-| TLet of name * kind * typ * typ
-| Forall of name * kind * bdr
+| TAbs of string * kind * bdr
+| TLet of string * kind * typ * typ
+| Forall of string * kind * bdr
 | Base of base
 and bdr = B of typ
 
@@ -45,13 +45,13 @@ and mask = ebound list
 *)
 and vtyp =
 | VArrow of vtyp * vtyp
-| VAbs of name * clos
-| VForall of name * clos
+| VAbs of string * clos
+| VForall of string * clos
 | VBase of base
 | VNeut of head * spine
 and tvar =
 | Solved of vtyp
-| Unsolved of name
+| Unsolved of string
 and head =
 | VQvar of lvl
 | VTvar of tvar uref * kind
@@ -60,7 +60,7 @@ and clos = {knd : kind; env : env; bdr : bdr} (* [bdr] lives in a scene of heigh
 
 and vparam = [`TpParam of kind | `TmParam of vtyp]
 
-and env = (name * esolved * ebound * vtyp) list
+and env = (esolved * ebound * vtyp) list
 (*
 types in the environment are stored as values, signifies "these are already normalized! just unpack them with [quote]"
 we also keep track of two boolean flags
@@ -82,7 +82,7 @@ and kind =
 | KVar of kvar uref
 and kvar =
 | KSolved of kind
-| KUnsolved of name
+| KUnsolved of string
 
 
 let lookup (Idx i) (env : env) = List.nth_opt env i

@@ -22,13 +22,13 @@ exception UnexpectedTArgPattern
 - the type of the pattern (return-type of the constructor)
 *)
 let infer_pattern (scn : scene) (RPCtor (ctor, args) : rpattern) : scene * pattern * vtyp =
-  match assoc_idx ctor scn.ctx with
+  match lookup scn ctor with
   | None -> failwith "absurd!" (* ctors will be verified before going into branches *)
   | Some (i, typ_all) ->
     let rec go (scn, acc : scene * pat_arg list) (args : pat_arg list) (typ : vtyp) : scene * pat_arg list * vtyp =
       match args, force typ with
       | PTvar v :: args, VForall (_, c) ->
-        let rest_typ = cinst_at scn.height v c in
+        let rest_typ = cinst_at scn.height c in
         let scn = assume_typ scn v c.knd `EUnsolved in
         go (scn, PTvar v :: acc) args rest_typ
       | args, (VForall (x, _) as typ) ->
@@ -41,7 +41,7 @@ let infer_pattern (scn : scene) (RPCtor (ctor, args) : rpattern) : scene * patte
       | [], typ -> scn, List.rev acc, typ
     in
     let scn, args, ret_typ = go (scn, []) (args) typ_all
-    in scn, PCtor (Idx i, args), ret_typ
+    in scn, PCtor (i, args), ret_typ
 
 (*
   when inferring a scene type, we use bound tvars in the types of bound vars.
@@ -55,10 +55,10 @@ let norm_branch_scn (PCtor (_, args) : pattern) (scn : scene) : scene =
   let rec go (args : pat_arg list) (ctx : ctx) (env : env) : ctx =
     match args, ctx, env with
     | [], _, _ -> ctx
-    | PVar  _ :: args, (x, t) :: ctx, env ->
+    | PVar  _ :: args, t :: ctx, env ->
       let ctx = go args ctx env in
       let t = vnorm env t in
-      (x, t) :: ctx
+      t :: ctx
     | PTvar _ :: args, ctx, _ :: env ->
       go args ctx env
     | _ -> failwith "absurd!" (* args and scene will be synchronized *)

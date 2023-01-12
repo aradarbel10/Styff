@@ -15,8 +15,9 @@ let print_err_pos lexbuf =
   let pos = lexbuf.lex_curr_p in
   "input:" ^ string_of_int pos.pos_lnum ^ ":" ^ string_of_int (pos.pos_cnum - pos.pos_bol + 1)
 
-let classify_op (op : string) =
-  match op.[0] with
+let classify_op (op' : string) =
+  let op = [op'] in
+  match op'.[0] with
   | ';' | '?' | ',' -> INFIXL0 op
   | '|' -> INFIXL1 op
   | '&' -> INFIXL2 op
@@ -29,11 +30,14 @@ let classify_op (op : string) =
   | '@' | '.' | '!' -> INFIXL9 op
   | _ -> failwith "impossible; non operator symbol"
 
+let sep_ident (nm : string) : string list = String.split_on_char '.' nm
+
 }
 
 let alpha = ['a'-'z' 'A'-'Z']
 let digit = ['0'-'9']
-let ident = (alpha) (alpha|'-'|'_'|digit|'\'')*
+let single_ident = (alpha) (alpha|'-'|'_'|digit|'\'')*
+let path_ident = single_ident ('.' single_ident)*
 let unum = digit+
 let symbol = ['!' '@' '#' '$' '%' '^' '&' '*' '-' '+' ';' '?' '/' '<' '>' ',' '~' '=' '.' ':' '|']
 let operator = symbol+
@@ -46,9 +50,9 @@ rule read = parse
   | "(*"        { read_comment lexbuf }
   | "infer"     { INFER }
   | "postulate" { POSTULATE }
-  | "builtin"   { BUILTIN }
   | "type"      { TYPE }
   | "data"      { DATA }
+  | "section"   { SECTION }
   | "where"     { WHERE }
   | '|'         { PIPE }
   | "match"     { MATCH }
@@ -75,7 +79,7 @@ rule read = parse
   | '{'         { LCURLY }
   | '}'         { RCURLY }
   | ':'         { COLON }
-  | ident       { IDENT (Lexing.lexeme lexbuf) }
+  | path_ident  { IDENT (sep_ident (Lexing.lexeme lexbuf)) }
   | operator    { classify_op (Lexing.lexeme lexbuf) }
   | unum        { NUM (int_of_string (Lexing.lexeme lexbuf)) }
   | _           { raise (SyntaxError ("Unexpected char: " ^ Lexing.lexeme lexbuf)) }

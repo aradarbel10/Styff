@@ -29,28 +29,28 @@ they are what's tested for equality during unification.
 let rec eval (env : env) : typ -> vtyp = function
 | Arrow (lt, rt) -> VArrow (eval env lt, eval env rt)
 | TAbs (x, k, b) -> VAbs (x, {knd = k; env = env; bdr = b})
-| TLet (x, _, t, rest) ->
+| TLet (_x, _, t, rest) ->
   let vt = eval env t in
-  eval ((x, `ESolved, `EDefed, vt) :: env) rest
+  eval ((`ESolved, `EDefed, vt) :: env) rest
 | Forall (x, k, b) -> VForall (x, {knd = k; env = env; bdr = b})
 | Tapp (t1, t2) -> vapp (eval env t1) (eval env t2)
 | Tvar (tv, k) -> vtvar tv k
 | Inserted (tv, k, msk) -> app_mask env msk (vtvar tv k)
 | Qvar i ->
   begin match lookup i env with
-  | Some (_, _, _, t) -> t
+  | Some (_, _, t) -> t
   | None -> raise IndexOutOfScope
   end
 | Base b -> VBase b
 
 (* eliminate a closure by evaling it under an extended env *)
-and capp (x : name) ({knd = _; env = env; bdr = B b} : clos) (t : vtyp) : vtyp =
-  eval ((x, `ESolved, `EDefed, t) :: env) b
-and cinst_at (hi : lvl) (x : name) (c : clos) = (* instantiate closure [c] at env of height [hi] *)
-  capp x c (vqvar hi)
+and capp ({knd = _; env = env; bdr = B b} : clos) (t : vtyp) : vtyp =
+  eval ((`ESolved, `EDefed, t) :: env) b
+and cinst_at (hi : lvl) (c : clos) = (* instantiate closure [c] at env of height [hi] *)
+  capp c (vqvar hi)
 and vapp (t1 : vtyp) (t2 : vtyp): vtyp =
   match force t1 with
-  | VAbs (x, c) -> capp x c t2
+  | VAbs (_, c) -> capp c t2
   | VNeut (hd, sp) -> VNeut (hd, t2 :: sp)
   | _ -> raise AppNonAbs
 and vtvar (tv : tvar uref) (k : kind) : vtyp =
@@ -60,7 +60,7 @@ and vtvar (tv : tvar uref) (k : kind) : vtyp =
 and app_mask (env : env) (msk : mask) (hd : vtyp) : vtyp =
   match env, msk with
   | [], [] -> hd
-  | (_, _, _, t) :: env, bound :: msk ->
+  | (_, _, t) :: env, bound :: msk ->
     let hd = (app_mask env msk hd) in
     begin match bound with
     | `EBound -> vapp hd t
@@ -87,8 +87,8 @@ and force (t : vtyp) : vtyp =
 let rec quote (hi : lvl) (t: vtyp) : typ =
   match force t with
 | VArrow (lt, rt) -> Arrow (quote hi lt, quote hi rt)
-| VAbs (x, c) -> TAbs (x, c.knd, quote_clos hi x c)
-| VForall (x, c) -> Forall (x, c.knd, quote_clos hi x c)
+| VAbs (x, c) -> TAbs (x, c.knd, quote_clos hi c)
+| VForall (x, c) -> Forall (x, c.knd, quote_clos hi c)
 | VBase b -> Base b
 | VNeut (hd, sp) -> quote_spine hi (quote_head hi hd) sp
 and quote_spine (hi : lvl) (hd : typ) (sp : spine) : typ =
@@ -98,8 +98,8 @@ and quote_spine (hi : lvl) (hd : typ) (sp : spine) : typ =
 and quote_head (hi : lvl) : head -> typ = function
 | VQvar i -> Qvar (lvl2idx hi i)
 | VTvar (tv, k) -> Tvar (tv, k)
-and quote_clos (hi : lvl) (x : name) (c : clos) : bdr =
-  let bod = cinst_at hi x c in
+and quote_clos (hi : lvl) (c : clos) : bdr =
+  let bod = cinst_at hi c in
   let bdr = quote (inc hi) bod in
   B bdr
 
@@ -116,7 +116,7 @@ let rec norm_expr (env : env) (e : expr) : expr =
   | Lam (x, t, e) -> Lam (x, norm env t, norm_expr env e)
   | Tlam (x, k, e) ->
     let v = vqvar (height env) in
-    Tlam (x, k, norm_expr ((x, `EUnsolved, `EBound, v) :: env) e)
+    Tlam (x, k, norm_expr ((`EUnsolved, `EBound, v) :: env) e)
   | App (e1, e2) -> App (norm_expr env e1, norm_expr env e2)
   | Inst (e, t) -> Inst (norm_expr env e, norm env t)
   | Let (rc, x, t, e, rest) -> Let (rc, x, norm env t, norm_expr env e, norm_expr env rest)
@@ -127,9 +127,9 @@ and norm_branch (env : env) (((PCtor (_, args) as pat), bod) : pattern * expr) :
     begin match args with
     | [] -> env
     | PVar  _ :: args -> env_of_pattern args env
-    | PTvar x :: args -> 
+    | PTvar _x :: args -> 
       let v = vqvar (height env) in
-      (x, `EUnsolved, `EBound, v) :: env_of_pattern args env
+      (`EUnsolved, `EBound, v) :: env_of_pattern args env
     end
   in
   (pat, norm_expr (env_of_pattern args env) bod)

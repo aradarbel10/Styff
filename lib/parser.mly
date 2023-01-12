@@ -20,42 +20,47 @@ type annotation =
 | TypeAnnot of rtyp option
 | KindAnnot of rkind option
 
-let unfoldLamTele ((xs, ann) : name list * annotation) (e : rexpr) : rexpr =
+let unfoldLamTele ((xs, ann) : string list * annotation) (e : rexpr) : rexpr =
   match ann with
   | TypeAnnot t -> List.fold_right (fun x e -> RLam  (x, t, e)) xs e
   | KindAnnot k -> List.fold_right (fun x e -> RTlam (x, k, e)) xs e
-let rec unfoldLamTeles (teles : (name list * annotation) list) (e : rexpr) : rexpr =
+let rec unfoldLamTeles (teles : (string list * annotation) list) (e : rexpr) : rexpr =
   match teles with
   | [] -> e
   | tele :: teles ->
     let e' = unfoldLamTeles teles e in
     unfoldLamTele tele e'
 
-let rec joinTele : name list * annotation -> rparam list = function
+let rec joinTele : string list * annotation -> rparam list = function
 | [], _ -> []
 | x::xs, TypeAnnot t -> RParam  (x, t) :: joinTele (xs, TypeAnnot t)
 | x::xs, KindAnnot k -> RTParam (x, k) :: joinTele (xs, KindAnnot k)
 
-let joinTeles : (name list * annotation) list -> rparam list =
+let joinTeles : (string list * annotation) list -> rparam list =
   fun teles -> List.concat @@ List.map joinTele teles
+
+exception UnexpectedQualified
+let single_name : name -> string = function
+| [x] -> x
+| _ -> raise UnexpectedQualified
 
 %}
 
 %token EOF
 
-%token <string> IDENT
+%token <Syntax.Common.name> IDENT
 %token <int> NUM
-%token <string> INFIXL0
-%token <string> INFIXL1
-%token <string> INFIXL2
-%token <string> INFIX3 
-%token <string> INFIX4 
-%token <string> INFIXR5
-%token <string> INFIXL6
-%token <string> INFIXL7
-%token <string> INFIX8 
-%token <string> INFIXL9
-%token INFER TYPE POSTULATE BUILTIN DATA WHERE PIPE MATCH WITH END
+%token <Syntax.Common.name> INFIXL0
+%token <Syntax.Common.name> INFIXL1
+%token <Syntax.Common.name> INFIXL2
+%token <Syntax.Common.name> INFIX3 
+%token <Syntax.Common.name> INFIX4
+%token <Syntax.Common.name> INFIXR5
+%token <Syntax.Common.name> INFIXL6
+%token <Syntax.Common.name> INFIXL7
+%token <Syntax.Common.name> INFIX8 
+%token <Syntax.Common.name> INFIXL9
+%token INFER TYPE POSTULATE DATA SECTION WHERE PIPE MATCH WITH END
 %token LAM ARROW LPAREN RPAREN LCURLY RCURLY COLON DOT LET REC EQ IN HOLE
 %token BOOL INT TRUE FALSE STAR
 
@@ -83,9 +88,12 @@ let joinTeles : (name list * annotation) list -> rparam list =
 %type <rtyp> typ
 %type <rtyp> t_atom
 
-%type <name list * annotation> tele
+%type <string list * annotation> tele
 
-%type <string> infix_op
+%type <string> bnd_name
+%type <name> qual_name
+
+%type <name> infix_op
 
 %type <rtyp> bind_annot
 %type <rkind> bind_annotk
@@ -99,12 +107,12 @@ stmt:
     let (x,teles,t) = xtt in
     Def (Option.is_some rc, x, joinTeles teles, t, e)
     }
-  | TYPE; x=decl_name; k=option(bind_annotk); EQ; t=typ { TDef (x, k, t) }
-  | INFER; x=decl_name; EQ; e=expr { Infer (x, e) }
-  | INFER; TYPE; x=decl_name; EQ; t=typ { TInfer (x, t) }
-  | POSTULATE; x=decl_name; COLON; t=typ { Postulate (x, t) }
-  | BUILTIN; x=decl_name; EQ; n=IDENT { BuiltIn (x, n) }
+  | TYPE; x=bnd_name; k=option(bind_annotk); EQ; t=typ { TDef (x, k, t) }
+  | INFER; x=bnd_name; EQ; e=expr { Infer (x, e) }
+  | INFER; TYPE; x=bnd_name; EQ; t=typ { TInfer (x, t) }
+  | POSTULATE; x=bnd_name; COLON; t=typ { Postulate (x, t) }
   | d=data_decl { d }
+  | SECTION; x=bnd_name; WHERE; stmts=list(stmt); END { Section (x, stmts) }
 
 expr:
   | f=e_atom; es=list(arg) { unfoldApp f es }
@@ -124,31 +132,33 @@ arg:
 
 lam_args:
   | teles=nonempty_list(tele) { teles }
-  | x=IDENT; COLON; t=typ { [[x], TypeAnnot (Some t)] }
+  | x=bnd_name; COLON; t=typ { [[x], TypeAnnot (Some t)] }
 let_args:
-  | x=decl_name; teles=list(tele); t=option(bind_annot) { (x, teles, t) }
-  | x1=IDENT; op=infix_op; x2=IDENT { (op, [[x1], TypeAnnot None; [x2], TypeAnnot None], None) }
+  | x=bnd_name; teles=list(tele); t=option(bind_annot) { (x, teles, t) }
+  | x1=bnd_name; op=infix_op; x2=bnd_name { (single_name op, [[x1], TypeAnnot None; [x2], TypeAnnot None], None) }
 %inline ttele:
-  | LCURLY; xs=nonempty_list(IDENT); k=option(bind_annotk); RCURLY
+  | LCURLY; xs=nonempty_list(bnd_name); k=option(bind_annotk); RCURLY
     { (xs, KindAnnot k) }
 tele:
   | t=ttele { t }
-  | x=IDENT { ([x], TypeAnnot None) }
-  | LPAREN; xs=nonempty_list(IDENT); COLON; t=typ; RPAREN { (xs, TypeAnnot (Some t)) }
+  | x=bnd_name { ([x], TypeAnnot None) }
+  | LPAREN; xs=nonempty_list(bnd_name); COLON; t=typ; RPAREN { (xs, TypeAnnot (Some t)) }
 
 bind_annot:
   | COLON; t=typ { t }
 e_atom:
-  | x=decl_name { RVar x }
+  | x=qual_name { RVar x }
   | LPAREN; e=expr; RPAREN { e }
   | n=NUM { RLit (`Int n) }
   | TRUE { RLit (`Bool true) }
   | FALSE { RLit (`Bool false) }
   | MATCH; e=e_atom; WITH; bs=list(branch); END { RMatch (e, bs) }
 
-%inline decl_name:
+%inline qual_name:
   | x=IDENT { x }
   | LPAREN; op=infix_op; RPAREN { op }
+%inline bnd_name:
+  | x=qual_name { single_name x }
 %inline infix_op:
   | op=INFIXL0 { op }
   | op=INFIXL1 { op }
@@ -164,13 +174,13 @@ e_atom:
 typ:
   | t=t_atom; ts=list(t_atom) { unfoldTypApp t ts }
   | a=typ; ARROW; b=typ { RArrow (a, b) }
-  | LCURLY; x=IDENT; k=option(bind_annotk); RCURLY; ARROW; t=typ
+  | LCURLY; x=bnd_name; k=option(bind_annotk); RCURLY; ARROW; t=typ
     { RForall (x, k, t) }
-  | LAM; x=IDENT; k=option(bind_annotk); DOT; e=typ
+  | LAM; x=bnd_name; k=option(bind_annotk); DOT; e=typ
     %prec WEAK { RTAbs (x, k, e) }
   | t1=typ; op=infix_op; t2=typ { RTapp (RTapp (RQvar op, t1), t2) }
 t_atom:
-  | x=IDENT { RQvar x }
+  | x=qual_name { RQvar x }
   | LPAREN; t=typ; RPAREN { t }
   | BOOL { RBase `Bool }
   | INT  { RBase `Int  }
@@ -185,17 +195,17 @@ bind_annotk:
 
 
 data_decl:
-  | DATA; x=decl_name; k=option(bind_annotk); WHERE; cs=list(ctor_decl)
+  | DATA; x=bnd_name; k=option(bind_annotk); WHERE; cs=list(ctor_decl)
     { DataDecl (x, k, cs) }
 ctor_decl:
-  | PIPE; x=decl_name; COLON; t=typ
+  | PIPE; x=bnd_name; COLON; t=typ
     { RCtor {nam = x; t = t} }
 
 branch:
   | PIPE; p=pattern; DOT; e=expr { (p, e) }
 pattern:
-  | ctor=decl_name; args=list(pattern_arg); { RPCtor (ctor, args) }
-  | lhs=IDENT; op=infix_op; rhs=IDENT { RPCtor (op, [PVar lhs; PVar rhs]) }
+  | ctor=qual_name; args=list(pattern_arg); { RPCtor (ctor, args) }
+  | lhs=bnd_name; op=infix_op; rhs=bnd_name { RPCtor (op, [PVar lhs; PVar rhs]) }
 pattern_arg:
-  | v=IDENT { PVar v }
-  | LCURLY; v=IDENT; RCURLY { PTvar v }
+  | v=bnd_name { PVar v }
+  | LCURLY; v=bnd_name; RCURLY { PTvar v }

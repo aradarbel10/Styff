@@ -3,8 +3,8 @@ open Syntax.Core
 open Eval
 
 (* fresh unification variables *)
-let freshk (x : name) = KVar (uref (KUnsolved (freshen x)))
-let fresh (msk : mask) (x : name) = Inserted (uref (Unsolved (freshen x)), freshk (freshen "k"), msk)
+let freshk (x : string) = KVar (uref (KUnsolved (freshen_str x)))
+let fresh (msk : mask) (x : string) = Inserted (uref (Unsolved (freshen_str x)), freshk "k", msk)
 
 (* choose between 'global' unification, which solves regular metavariables,
    and 'local' unification (aka LHS unification) which solves variables from the environment *)
@@ -58,11 +58,11 @@ let rec rename (r : partial_renaming) (t : vtyp) (tv' : tvar uref) : typ =
       | Some i' -> rename_spine r (Qvar (lvl2idx r.dom i')) sp tv'
     end
   | VArrow (lt, rt) -> Arrow (rename r lt tv', rename r rt tv')
-  | VAbs (x, c) -> TAbs (x, c.knd, rename_clos r x c tv')
-  | VForall (x, c) -> Forall (x, c.knd, rename_clos r x c tv')
+  | VAbs (x, c) -> TAbs (x, c.knd, rename_clos r c tv')
+  | VForall (x, c) -> Forall (x, c.knd, rename_clos r c tv')
   | VBase b -> Base b
-and rename_clos (r : partial_renaming) (x : name) (c : clos) (tv' : tvar uref) : bdr =
-  let bod = cinst_at r.cod x c in
+and rename_clos (r : partial_renaming) (c : clos) (tv' : tvar uref) : bdr =
+  let bod = cinst_at r.cod c in
   let bdr = rename (lift r) bod tv' in
   B bdr
 and rename_spine (r : partial_renaming) (t : typ) (sp : spine) (tv' : tvar uref) : typ =
@@ -98,23 +98,23 @@ let solve (hi : lvl) (tv : tvar uref) (k : kind) (sp : spine) (t : vtyp) : unit 
 
 let rec assign_local (env : env ref) (lvl : lvl) (t : vtyp) : unit =
   let vne = List.rev !env in
-  let (x, solved, _, _) = List.nth vne (unLvl lvl) in
+  let (solved, _, _) = List.nth vne (unLvl lvl) in
   let entry = match solved with
     | `ESolved -> failwith "idk what to do"
-    | `EUnsolved -> (x, `ESolved, `EDefed, t)
+    | `EUnsolved -> (`ESolved, `EDefed, t)
   in
   let vne' = List.mapi (fun i e -> if i = unLvl lvl then entry else e) vne in
   env := List.rev vne';
 and solve_local (env : env ref) (_hi : lvl) (i : lvl) (i' : lvl) : unit =
   match lookup_lvl i !env, lookup_lvl i' !env with (* should maybe add some kind of forcing/just represent env more like metactx *)
   | None, _ | _, None -> failwith "absurd!" (* ill scoped value *)
-  | Some (_, _, _, t), Some (_, _, _, t') when t = t' -> ()
-  | Some (_, `EUnsolved, _, u), Some (_, _, _, t) | Some (_, _, _, t), Some (_, `EUnsolved, _, u) ->
+  | Some (_, _, t), Some (_, _, t') when t = t' -> ()
+  | Some (`EUnsolved, _, u), Some (_, _, t) | Some (_, _, t), Some (`EUnsolved, _, u) ->
     begin match force u with
     | VNeut (VQvar i, []) -> assign_local env i t
     | _ -> failwith "absurd!" (* invalid unsolved value *)
     end
-  | Some (_, `ESolved, _, t), Some (_, `ESolved, _, t') -> (* unify hi (Local env) t t' *)
+  | Some (`ESolved, _, t), Some (`ESolved, _, t') -> (* TODO unify hi (Local env) t t' *)
     if t = t' then () else raise UnunifiableLocals
 
 (* confirm two types are equal, solve metavars along the way if needed.
@@ -128,12 +128,13 @@ and unify (hi : lvl) (mode : unif_mode) (typ : vtyp) (typ' : vtyp) : unit =
   | Global, VNeut (VQvar i, sp), VNeut (VQvar i', sp') when i = i' -> unify_spines hi mode sp sp'
   | Local env, VNeut (VQvar i, sp), VNeut (VQvar i', sp') -> unify_spines hi mode sp sp'; solve_local env hi i i'
   | Local env, VNeut (VQvar i, []), t | Local env, t, VNeut (VQvar i, []) -> assign_local env i t
-  (* | Local env, VNeut (VQvar i, sp), t
+  (* TODO cleanup
+  | Local env, VNeut (VQvar i, sp), t
   | Local env, t, VNeut (VQvar i, sp) -> solve_local hi env i sp t *)
   | _, VArrow (ltyp, rtyp), VArrow (ltyp', rtyp') ->
     unify hi mode ltyp ltyp'; unify hi mode rtyp rtyp'
-  | _, VAbs (x, c), VAbs (x', c') -> unify (inc hi) mode (cinst_at hi x c) (cinst_at hi x' c')
-  | _, VForall (x, c), VForall (x', c') -> unify (inc hi) mode (cinst_at hi x c) (cinst_at hi x' c')
+  | _, VAbs (_, c), VAbs (_, c') -> unify (inc hi) mode (cinst_at hi c) (cinst_at hi c')
+  | _, VForall (_, c), VForall (_, c') -> unify (inc hi) mode (cinst_at hi c) (cinst_at hi c')
   | _, VBase b, VBase b' when b = b' -> ()
   | _, t, t' -> let _ = (t, t') in raise Ununifiable
 and unify_spines (hi : lvl) (mode : unif_mode) (sp : spine) (sp' : spine) =

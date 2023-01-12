@@ -1,13 +1,18 @@
-type name = string
+type name = string list
 
 (* source of fresh names, mutable counter is hidden *)
 module Fresh : sig
   val uniquei : unit -> int
+  val freshen_str : string -> string
   val freshen : name -> name
 end = struct
   let freshi = ref (-1)
   let uniquei () = freshi := !freshi + 1; !freshi
-  let freshen (x : name) = x ^ string_of_int (uniquei ())
+  let freshen_str (x : string) = x ^ string_of_int (uniquei ())
+  let rec freshen = function
+  | [] -> []
+  | [s] -> [freshen_str s]
+  | s :: ss -> s :: freshen ss
 end
 include Fresh
 
@@ -23,7 +28,15 @@ type base = [`Int | `Bool]
 type lit = [`Int of int | `Bool of bool]
 
 type pat_arg =
-| PVar of name
-| PTvar of name
+| PVar of string
+| PTvar of string
 
 type binop = IntAdd | IntSub | IntMul | BoolAnd | BoolOr
+
+(* printing names *)
+let parens (b : bool) (s : string) : string =
+  if b then "(" ^ s ^ ")" else s
+
+let symbols = ['!'; '@'; '#'; '$'; '%'; '^'; '&'; '*'; '-'; '+'; ';'; '?'; '/'; '<'; '>'; ','; '~'; '='; '.'; ':'; '|']
+let string_of_name (nm : name) : string =
+  String.concat "." (List.map (fun s -> parens (List.mem s.[0] symbols) s) nm)

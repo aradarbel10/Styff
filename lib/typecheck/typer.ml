@@ -1,4 +1,3 @@
-open Util
 open Syntax.Raw
 open Syntax.Core
 open Pretty
@@ -17,9 +16,8 @@ exception UnexpectedHigherKind
 let unify' (scn : scene) (t : vtyp) (t' : vtyp) =
   try unify scn.height Global t t' with
   | Ununifiable ->
-    let nms = List.map (fun (x, _, _, _) -> x) scn.env in
-    let str  = string_of_vtype nms t  in
-    let str' = string_of_vtype nms t' in
+    let str  = string_of_vtype scn.scope t  in
+    let str' = string_of_vtype scn.scope t' in
     raise (Failure ("unable to unify " ^ str ^ " ~/~ " ^ str'))
 
 let infer_lit : lit -> base = function
@@ -48,10 +46,10 @@ let lams_ctor (hi' : lvl) (Idx ctor : idx) (params : vparam list) =
     let args, _, tmdepth = args_of_params params in
     Ctor (Idx (ctor + tmdepth), args)
   | `TmParam t :: ps ->
-    let a = freshen "a" in
+    let a = freshen_str "a" in
     Lam (a, quote hi t, go hi ps)
   | `TpParam k :: ps ->
-    let b = freshen "b" in
+    let b = freshen_str "b" in
     Tlam (b, k, go (inc hi) ps)
   in go hi' params
 
@@ -62,7 +60,7 @@ let insert (scn : scene) (e, t : expr * vtyp) : expr * vtyp =
   | VForall (x, bod) ->
     let m = fresh (mask_of scn) x in
     let m' = eval scn.env m in
-    (Inst (e, m), capp x bod m')
+    (Inst (e, m), capp bod m')
   | t -> (e, t)
 let insert_unless (scn : scene) (e, t : expr * vtyp) : expr * vtyp =
   match e with
@@ -103,21 +101,21 @@ let rec kind_of (scn : scene) : rtyp -> typ * kind = function
   (Forall (x, xk, B t), Star)
 | RHole -> (fresh (mask_of scn) "t", Star)
 | RQvar x ->
-  match assoc_idx x scn.tctx with
-  | Some (i, k) -> (Qvar (Idx i), k)
+  match lookup_type scn x with
+  | Some (i, k) -> (Qvar i, k)
   | None -> raise (UndefinedQVar x)
 and is_type (scn : scene) (t : rtyp) : typ =
   let (t, k) = kind_of scn t in
   unify_kinds k Star;
   t
-and maybe_rtyp (scn : scene) (x : name) : rtyp option -> typ = function
+and maybe_rtyp (scn : scene) (x : string) : rtyp option -> typ = function
 | Some t -> is_type scn t
-| None -> fresh (mask_of scn) (freshen x)
-and maybe_rkind (x : name) : rkind option -> kind = function
+| None -> fresh (mask_of scn) x
+and maybe_rkind (x : string) : rkind option -> kind = function
 | Some k -> lower_kind k
-| None -> freshk (freshen x)
+| None -> freshk x
 
-and infer_let_type (scn : scene) (x : name) (_ : rkind option) (t : rtyp) : scene * typ * vtyp * kind =
+and infer_let_type (scn : scene) (x : string) (_ : rkind option) (t : rtyp) : scene * typ * vtyp * kind =
   let (t, k) = kind_of scn t in
   let vt = eval scn.env t in
   (define_typ scn x vt k, t, vt, k)
@@ -130,12 +128,12 @@ let rec infer (scn : scene) : rexpr -> expr * vtyp = function
   (e, t)
 
 | RVar x ->
-  begin match assoc_idx x scn.ctx with
+  begin match lookup scn x with
   | None -> raise (UndefinedVar x)
   | Some (i, t) ->
     match List.assoc_opt x scn.ctor_params with
-    | None -> Var (Idx i), t
-    | Some params -> insert scn (lams_ctor scn.height (Idx i) params, t)
+    | None -> Var i, t
+    | Some params -> insert scn (lams_ctor scn.height i params, t)
   end
 
 | RLam (x, xt, e) ->
@@ -165,12 +163,12 @@ let rec infer (scn : scene) : rexpr -> expr * vtyp = function
   let (e, te) = infer scn e in
   let (t, k) = kind_of scn t in
 
-  let x = freshen "x" in
+  let x = freshen_str "x" in
   let ret = fresh (mask_of (assume_typ scn x k `ESolved)) "ret" in
   let clos = {knd = k; env = scn.env; bdr = B ret} in
 
   unify' scn te (VForall (x, clos));
-  (Inst (e, t), capp x clos (eval scn.env t))
+  (Inst (e, t), capp clos (eval scn.env t))
 
 | RLet (rc, x, ps, t, e, rest) ->
   let (scn, e, te) = infer_let scn rc x ps t e in
@@ -202,8 +200,8 @@ and check (scn : scene) (e : rexpr) (t : vtyp) : expr = match e, force t with
   (*todo unify k with the kind of x'*)
   check scn (RTlam (x, None, e)) (VForall (x', c))
 
-| RTlam (x, None, e), VForall (x', c) ->
-  let ret_typ = cinst_at scn.height x' c in
+| RTlam (x, None, e), VForall (_, c) ->
+  let ret_typ = cinst_at scn.height c in
   let e = check (assume_typ scn x c.knd `EUnsolved) e ret_typ in
   Tlam (x, c.knd, e)
 
@@ -249,14 +247,14 @@ and process_params (scn : scene) (ps : rparam list) (ret_typ : rtyp option) : (s
 (* compute the scene representing a [let]'s inner scope, with all parameters bound.
   also returns the entire binding's type, and just its return type (without parameters)
 *)
-and scene_of_let (scn : scene) (rc : bool) (x : name) (ps : rparam list) (ret_typ : rtyp option) : scene * vtyp * vtyp * (expr -> expr) =
+and scene_of_let (scn : scene) (rc : bool) (x : string) (ps : rparam list) (ret_typ : rtyp option) : scene * vtyp * vtyp * (expr -> expr) =
   let (mkscn, all_typ, ret_typ, lams) = process_params scn ps ret_typ in
   let all_typ = eval scn.env all_typ in
   (* if the binding is recursive, extend the scene with it *)
   let inner_scn = mkscn @@ if rc then assume scn x all_typ else scn in
   (inner_scn, all_typ, ret_typ, lams)
 
-and infer_let (scn : scene) (rc : bool) (x : name) (ps : rparam list) (t : rtyp option) (e : rexpr) : scene * expr * vtyp =
+and infer_let (scn : scene) (rc : bool) (x : string) (ps : rparam list) (t : rtyp option) (e : rexpr) : scene * expr * vtyp =
   let (inner_scn, all_typ, ret_typ, lams) = scene_of_let scn rc x ps t in
   let e = lams @@ check inner_scn e ret_typ in
   (assume scn x all_typ, e, all_typ)
@@ -277,8 +275,8 @@ let rec return_type (hi : lvl) : vtyp -> vtyp * vparam list = function
 | VArrow (lt, rt) ->
   let ret, params = return_type hi rt
   in ret, `TmParam lt :: params
-| VForall (x, c) ->
-  let ret, params = return_type (inc hi) (cinst_at hi x c)
+| VForall (_, c) ->
+  let ret, params = return_type (inc hi) (cinst_at hi c)
   in ret, `TpParam c.knd :: params
 | t -> t, []
 
@@ -292,8 +290,8 @@ let declare_ctor (parent : lvl) (scn : scene) (RCtor {nam; t} : rctor) : scene =
   | VNeut (VQvar i, _), params when parent = i ->
     define_ctor_params (assume scn nam vt) nam params
   | _ -> raise BadCtorReturn
-let declare_data (scn : scene) (x : name) (k : rkind option) (ctors : rctor list) =
-  let k = maybe_rkind (freshen "k") k in
+let declare_data (scn : scene) (x : string) (k : rkind option) (ctors : rctor list) =
+  let k = maybe_rkind (freshen_str "k") k in
   let parent = scn.height in (* slightly hacky: get the height before [assume_typ], will be the lvl of the type just defined *)
   let scn = assume_typ scn x k `ESolved in
   let scn = List.fold_left (declare_ctor parent) scn ctors in
