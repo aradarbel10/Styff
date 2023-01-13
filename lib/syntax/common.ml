@@ -32,6 +32,12 @@ type pat_arg =
 | PTvar of string
 
 type binop = IntAdd | IntSub | IntMul | BoolAnd | BoolOr
+let string_of_binop : binop -> string = function
+| IntAdd -> "+"
+| IntSub -> "-"
+| IntMul -> "*"
+| BoolAnd -> "&&"
+| BoolOr -> "||"
 
 (* printing names *)
 let parens (b : bool) (s : string) : string =

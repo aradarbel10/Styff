@@ -1,4 +1,3 @@
-open Batteries.Uref
 open Syntax.Core
 
 exception IndexOutOfScope
@@ -8,7 +7,7 @@ exception IllLengthedMask
 let rec forcek (k : kind) : kind =
   match k with
   | KVar kv ->
-    begin match uget kv with
+    begin match !kv with
     | KSolved k' -> forcek k'
     | _ -> k
     end
@@ -53,8 +52,8 @@ and vapp (t1 : vtyp) (t2 : vtyp): vtyp =
   | VAbs (_, c) -> capp c t2
   | VNeut (hd, sp) -> VNeut (hd, t2 :: sp)
   | _ -> raise AppNonAbs
-and vtvar (tv : tvar uref) (k : kind) : vtyp =
-  match uget tv with
+and vtvar (tv : tvar ref) (k : kind) : vtyp =
+  match !tv with
   | Solved t -> t
   | Unsolved _ -> VNeut (VTvar (tv, k), [])
 and app_mask (env : env) (msk : mask) (hd : vtyp) : vtyp =
@@ -76,7 +75,7 @@ and app_spine (t : vtyp) (sp : spine) : vtyp =
 and force (t : vtyp) : vtyp =
   begin match t with
   | VNeut (VTvar (tv, _), sp) ->
-    begin match uget tv with
+    begin match !tv with
     | Solved t' -> force (app_spine t' sp)
     | _ -> t
     end
@@ -120,8 +119,9 @@ let rec norm_expr (env : env) (e : expr) : expr =
   | App (e1, e2) -> App (norm_expr env e1, norm_expr env e2)
   | Inst (e, t) -> Inst (norm_expr env e, norm env t)
   | Let (rc, x, t, e, rest) -> Let (rc, x, norm env t, norm_expr env e, norm_expr env rest)
-  | Lit l -> Lit l
   | Match (e, bs) -> Match (norm_expr env e, List.map (norm_branch env) bs)
+  | Lit l -> Lit l
+  | BinOp (e1, op, e2) -> BinOp (norm_expr env e1, op, norm_expr env e2)
 and norm_branch (env : env) (((PCtor (_, args) as pat), bod) : pattern * expr) : pattern * expr =
   let rec env_of_pattern (args : pat_arg list) (env : env) : env =
     begin match args with

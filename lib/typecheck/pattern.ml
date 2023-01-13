@@ -22,20 +22,20 @@ exception UnexpectedTArgPattern
 - the type of the pattern (return-type of the constructor)
 *)
 let infer_pattern (scn : scene) (RPCtor (ctor, args) : rpattern) : scene * pattern * vtyp =
-  match lookup scn ctor with
+  match lookup ctor scn with
   | None -> failwith "absurd!" (* ctors will be verified before going into branches *)
   | Some (i, typ_all) ->
     let rec go (scn, acc : scene * pat_arg list) (args : pat_arg list) (typ : vtyp) : scene * pat_arg list * vtyp =
       match args, force typ with
       | PTvar v :: args, VForall (_, c) ->
         let rest_typ = cinst_at scn.height c in
-        let scn = assume_typ scn v c.knd `EUnsolved in
+        let scn = assume_typ v c.knd `EUnsolved scn in
         go (scn, PTvar v :: acc) args rest_typ
       | args, (VForall (x, _) as typ) ->
         go (scn, acc) (PTvar x :: args) typ (* insert artificial param-tvar and retry with same typ *)
       | PTvar _ :: _, _ -> raise UnexpectedTArgPattern
       | PVar v :: args, VArrow (lt, rt) ->
-        let scn = assume scn v lt in
+        let scn = assume v lt scn in
         go (scn, PVar v :: acc) args rt
       | PVar _ :: _, _ -> raise TooManyArgsInPattern
       | [], typ -> scn, List.rev acc, typ

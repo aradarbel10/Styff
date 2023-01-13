@@ -1,10 +1,9 @@
-open Batteries.Uref
 open Syntax.Core
 open Eval
 
 (* fresh unification variables *)
-let freshk (x : string) = KVar (uref (KUnsolved (freshen_str x)))
-let fresh (msk : mask) (x : string) = Inserted (uref (Unsolved (freshen_str x)), freshk "k", msk)
+let freshk (x : string) = KVar (ref (KUnsolved (freshen_str x)))
+let fresh (msk : mask) (x : string) = Inserted (ref (Unsolved (freshen_str x)), freshk "k", msk)
 
 (* choose between 'global' unification, which solves regular metavariables,
    and 'local' unification (aka LHS unification) which solves variables from the environment *)
@@ -44,12 +43,12 @@ let rec invert (hi : lvl) : spine -> partial_renaming = function
 
 (* for maximum efficiency, we combine into the same function:
    apply renaming, quoting, occurs check *)
-let rec rename (r : partial_renaming) (t : vtyp) (tv' : tvar uref) : typ =
+let rec rename (r : partial_renaming) (t : vtyp) (tv' : tvar ref) : typ =
   match force t with
   | VNeut (hd, sp) ->
     begin match hd with
     | VTvar (tv, k) ->
-      if equal tv tv'
+      if tv == tv'
         then raise OccursError
         else rename_spine r (Tvar (tv, k)) sp tv'
     | VQvar i ->
@@ -61,11 +60,11 @@ let rec rename (r : partial_renaming) (t : vtyp) (tv' : tvar uref) : typ =
   | VAbs (x, c) -> TAbs (x, c.knd, rename_clos r c tv')
   | VForall (x, c) -> Forall (x, c.knd, rename_clos r c tv')
   | VBase b -> Base b
-and rename_clos (r : partial_renaming) (c : clos) (tv' : tvar uref) : bdr =
+and rename_clos (r : partial_renaming) (c : clos) (tv' : tvar ref) : bdr =
   let bod = cinst_at r.cod c in
   let bdr = rename (lift r) bod tv' in
   B bdr
-and rename_spine (r : partial_renaming) (t : typ) (sp : spine) (tv' : tvar uref) : typ =
+and rename_spine (r : partial_renaming) (t : typ) (sp : spine) (tv' : tvar ref) : typ =
   match sp with
   | [] -> t
   | em :: sp -> Tapp (rename_spine r t sp tv', rename r em tv')
@@ -86,15 +85,15 @@ let rec close (Lvl i : lvl) (k : kind) (t : typ) : typ =
   | KVar kv ->
     let lk = freshk "lk" in
     let rk = freshk "rk" in
-    uset kv (KSolved (KArrow (lk, rk)));
+    kv := KSolved (KArrow (lk, rk));
     close (Lvl i) (KVar kv) t
   | _ -> raise (Invalid_argument "can't wrap type-lambda around non-arrow kind")
 
-let solve (hi : lvl) (tv : tvar uref) (k : kind) (sp : spine) (t : vtyp) : unit =
+let solve (hi : lvl) (tv : tvar ref) (k : kind) (sp : spine) (t : vtyp) : unit =
   let ren = invert hi sp in
   let rhs = rename ren t tv in
   let sol = eval [] (close ren.dom k rhs) in
-  uset tv (Solved sol)
+  tv := Solved sol
 
 let rec assign_local (env : env ref) (lvl : lvl) (t : vtyp) : unit =
   let vne = List.rev !env in
@@ -148,5 +147,5 @@ and unify_kinds (k : kind) (k' : kind) =
   | Star, Star -> ()
   | KArrow (lk, rk), KArrow (lk', rk') -> unify_kinds lk lk'; unify_kinds rk rk'
   | KVar kv, KVar kv' when kv = kv' -> ()
-  | KVar kv, k | k, KVar kv -> uset kv (KSolved k)
+  | KVar kv, k | k, KVar kv -> kv := (KSolved k)
   | _ -> raise UnunifiableKinds

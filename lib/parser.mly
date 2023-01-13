@@ -62,7 +62,7 @@ let single_name : name -> string = function
 %token <Syntax.Common.name> INFIXL9
 %token INFER TYPE POSTULATE DATA SECTION WHERE PIPE MATCH WITH END
 %token LAM ARROW LPAREN RPAREN LCURLY RCURLY COLON DOT LET REC EQ IN HOLE
-%token BOOL INT TRUE FALSE STAR
+%token STAR
 
 %nonassoc WEAK
 %nonassoc COLON
@@ -111,6 +111,7 @@ stmt:
   | INFER; x=bnd_name; EQ; e=expr { Infer (x, e) }
   | INFER; TYPE; x=bnd_name; EQ; t=typ { TInfer (x, t) }
   | POSTULATE; x=bnd_name; COLON; t=typ { Postulate (x, t) }
+  | POSTULATE; TYPE; x=bnd_name; COLON; k=kind { PostulateType (x, k) }
   | d=data_decl { d }
   | SECTION; x=bnd_name; WHERE; stmts=list(stmt); END { Section (x, stmts) }
 
@@ -150,8 +151,6 @@ e_atom:
   | x=qual_name { RVar x }
   | LPAREN; e=expr; RPAREN { e }
   | n=NUM { RLit (`Int n) }
-  | TRUE { RLit (`Bool true) }
-  | FALSE { RLit (`Bool false) }
   | MATCH; e=e_atom; WITH; bs=list(branch); END { RMatch (e, bs) }
 
 %inline qual_name:
@@ -182,8 +181,6 @@ typ:
 t_atom:
   | x=qual_name { RQvar x }
   | LPAREN; t=typ; RPAREN { t }
-  | BOOL { RBase `Bool }
-  | INT  { RBase `Int  }
   | HOLE { RHole }
 
 kind:

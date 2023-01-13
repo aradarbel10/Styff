@@ -39,7 +39,7 @@ type stmt =
 | Infer of string * rexpr
 | TInfer of string * rtyp
 | Postulate of string * rtyp
+| PostulateType of string * rkind
 | DataDecl of string * rkind option * rctor list
-| BuiltIn of string * string
 | Section of string * prog
 and prog = stmt list

@@ -1,4 +1,3 @@
-open Batteries.Uref
 open Syntax.Common
 module S = Syntax.Core
 module Z = Syntax.Zonked
@@ -22,7 +21,7 @@ let rec zonk_kind (k : S.kind) : Z.kind =
   | Star -> Star
   | KArrow (k1, k2) -> KArrow (zonk_kind k1, zonk_kind k2)
   | KVar kv ->
-    match uget kv with
+    match !kv with
     | KSolved k -> zonk_kind k
     | KUnsolved _ -> raise UnsolvedKVar
 
@@ -30,7 +29,7 @@ let zonk_type : scope -> S.typ -> Z.typ =
   let rec go (scp : scope) (t : S.typ) : Z.typ =
     match t with
     | Tvar (tv, _) ->
-      begin match uget tv with
+      begin match !tv with
       | Solved t -> go scp (quote (S.height scp.tps) t)
       | Unsolved _ -> raise UnsolvedTVar
       end
@@ -59,6 +58,7 @@ let zonk_expr : scope -> S.expr -> Z.expr =
       Let (x, go scp e, go (Scope.push scp [x]) e')
     | Match (e, branches) -> Match (go scp e, go_branches scp branches)
     | Lit l -> Lit l
+    | BinOp (e1, op, e2) -> BinOp (go scp e1, op, go scp e2)
 
   and scope_pattern (scp : scope) (PCtor (i, ps) : S.pattern) =
     let ctor = Scope.ith scp i in

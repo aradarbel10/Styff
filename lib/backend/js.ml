@@ -131,14 +131,8 @@ let string_of_js =
   | TagWith (x, es) -> "[\"" ^ string_of_name x ^ "\"" ^ String.concat "" (List.map (fun e -> ", " ^ go_expr indent e) es) ^ "]"
   | Lit l -> go_lit l
   | Null -> "null"
-  | BinOp (e1, op, e2) -> go_expr indent e1 ^ " " ^ go_binop op ^ " " ^ go_expr indent e2
+  | BinOp (e1, op, e2) -> "(" ^ go_expr indent e1 ^ " " ^ string_of_binop op ^ " " ^ go_expr indent e2 ^ ")"
   and go_lit : lit -> string = function
   | `Int i -> string_of_int i
   | `Bool b -> string_of_bool b
-  and go_binop : binop -> string = function
-  | IntAdd -> "+"
-  | IntSub -> "-"
-  | IntMul -> "*"
-  | BoolAnd -> "&&"
-  | BoolOr -> "||"
   in go_block 0

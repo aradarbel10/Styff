@@ -1,0 +1,7 @@
+(* example of using builtins *)
+
+let use-ints (a b : builtin.int) : builtin.int =
+  builtin.int-add (builtin.int-mul a b) b
+
+let curry-a-builtin : builtin.int -> builtin.int =
+  builtin.int-add 100

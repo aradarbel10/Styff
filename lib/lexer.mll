@@ -58,10 +58,6 @@ rule read = parse
   | "match"     { MATCH }
   | "with"      { WITH }
   | "end"       { END }
-  | "bool"      { BOOL }
-  | "true"      { TRUE }
-  | "false"     { FALSE }
-  | "int"       { INT }
   | "∗"         { STAR }
   | "lam"       { LAM }
   | "λ"         { LAM }

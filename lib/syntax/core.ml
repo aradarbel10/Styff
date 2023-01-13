@@ -1,4 +1,3 @@
-open Batteries.Uref
 include Common
 
 (* core language, typechecker's output
@@ -16,11 +15,12 @@ type expr =
 | Let of bool * string * typ * expr * expr
 | Match of expr * (pattern * expr) list
 | Lit of lit
+| BinOp of expr * binop * expr
 and arg = [`TmArg of expr | `TpArg of typ]
 
 and typ =
-| Tvar of tvar uref * kind
-| Inserted of tvar uref * kind * mask
+| Tvar of tvar ref * kind
+| Inserted of tvar ref * kind * mask
 | Qvar of idx
 | Arrow of typ * typ
 | Tapp of typ * typ
@@ -54,7 +54,7 @@ and tvar =
 | Unsolved of string
 and head =
 | VQvar of lvl
-| VTvar of tvar uref * kind
+| VTvar of tvar ref * kind
 and spine = vtyp list
 and clos = {knd : kind; env : env; bdr : bdr} (* [bdr] lives in a scene of height |env|+1, the extra value is the closure's parameter *)
 
@@ -79,7 +79,7 @@ example:
 and kind =
 | Star
 | KArrow of kind * kind
-| KVar of kvar uref
+| KVar of kvar ref
 and kvar =
 | KSolved of kind
 | KUnsolved of string

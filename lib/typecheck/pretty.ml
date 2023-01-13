@@ -1,4 +1,3 @@
-open Batteries.Uref
 open Syntax.Core
 open Eval
 open Scene
@@ -14,7 +13,7 @@ let string_of_lit : lit -> string = function
 let rec string_of_type (scp : scope) (t : typ) : string =
   let rec go (p : int) (scp : scope) = function (* [p]recedence printing *)
   | Tvar (tv, _) ->
-    begin match uget tv with
+    begin match !tv with
     | Solved t -> "(" ^ string_of_vtype empty_scope t ^ ")"
     | Unsolved x -> "?" ^ x
     end
@@ -64,6 +63,7 @@ and string_of_expr (scp : scope) (expr : expr) : string =
     String.concat " | " (List.map (go_branch scp) bs)
     ^ " }"
   | Lit l -> string_of_lit l
+  | BinOp (e1, op, e2) -> "(" ^ go p scp e1 ^ " " ^ string_of_binop op ^ " " ^ go p scp e2 ^ ")"
   in go 0 scp expr
 
 
@@ -73,7 +73,7 @@ and string_of_kind (k : kind) : string =
     | Star -> "∗"
     | KArrow (lk, rk) -> parens (p > 1) @@ go 2 lk ^ " → " ^ go 1 rk
     | KVar kv ->
-      match uget kv with
+      match !kv with
       | KSolved k -> go p k
       | KUnsolved x -> "?" ^ x
   in go 0 k

@@ -148,13 +148,13 @@ let empty_scene : scene = {
   trace = []
 }
 
-let assume (scn : scene) (x : string) (t : vtyp) : scene =
+let assume (x : string) (t : vtyp) (scn : scene) : scene =
   {scn with
     ctx = t :: scn.ctx;
     scope = Scope.push scn.scope [x];
   }
 
-let assume_typ (scn : scene) (x : string) (k : kind) (fixed : [`ESolved | `EUnsolved]) : scene =
+let assume_typ (x : string) (k : kind) (fixed : [`ESolved | `EUnsolved]) (scn : scene) : scene =
   {scn with
     height = inc scn.height;
     tctx = k :: scn.tctx;
@@ -162,7 +162,7 @@ let assume_typ (scn : scene) (x : string) (k : kind) (fixed : [`ESolved | `EUnso
     scope = Scope.tpush scn.scope [x];
   }
 
-let define_typ (scn : scene) (x : string) (t : vtyp) (k : kind) : scene =
+let define_typ (x : string) (t : vtyp) (k : kind) (scn : scene) : scene =
   {scn with
     height = inc scn.height;
     tctx = k :: scn.tctx;
@@ -173,12 +173,12 @@ let define_typ (scn : scene) (x : string) (t : vtyp) (k : kind) : scene =
 let mask_of (scn : scene) : mask =
   List.map (fun (_, bound, _) -> bound) scn.env
 
-let define_ctor_params (scn : scene) (ctor : string) (params : vparam list) : scene =
+let define_ctor_params (ctor : string) (params : vparam list) (scn : scene) : scene =
   {scn with
     ctor_params = (ctor :: scn.scope.prefix, params) :: scn.ctor_params
   }
 
-let define_ctors (scn : scene) (x : string) (ctors : string list) : scene =
+let define_ctors (x : string) (ctors : string list) (scn : scene) : scene =
   let x = x :: scn.scope.prefix in
   let ctors = List.map (fun c -> c :: scn.scope.prefix) ctors in
   {scn with
@@ -186,14 +186,14 @@ let define_ctors (scn : scene) (x : string) (ctors : string list) : scene =
     parents = List.map (fun c -> (c, x)) ctors @ scn.parents
   }
 
-let lookup (scn : scene) (nm : name) : (idx * vtyp) option =
+let lookup (nm : name) (scn : scene) : (idx * vtyp) option =
   match Sectioned.lookup scn.scope.nms scn.scope.prefix nm with
   | None -> None
   | Some (Idx i) ->
     let t = List.nth scn.ctx i in
     Some (Idx i, t)
 
-let lookup_type (scn : scene) (nm : name) : (idx * kind) option =
+let lookup_type (nm : name) (scn : scene) : (idx * kind) option =
   match Sectioned.lookup scn.scope.tps scn.scope.prefix nm with
   | None -> None
   | Some (Idx i) ->
