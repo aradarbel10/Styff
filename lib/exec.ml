@@ -9,6 +9,11 @@ module Z = Syntax.Zonked
 open Backend.Zonk
 open Backend.Js
 
+type options = {
+  elab_diagnostics : bool;
+  dump_output : bool;
+}
+
 (*
 elaborate given stmt under given scene, with [scp] to accumulate the qualified scope.
 returns:
@@ -17,7 +22,7 @@ returns:
   could later be plugged into above scene to get qualified context.
 - elaborated version of the statement (might produce a list of statements in result)
 *)
-let rec elab_stmt (scn : scene) (stmt : stmt) : scene * Z.prog =
+let rec elab_stmt (opts : options) (scn : scene) (stmt : stmt) : scene * Z.prog =
   match stmt with
   | Def (rc, x, ps, t, e) ->
     (* elaborate the definition itself *)
@@ -25,9 +30,10 @@ let rec elab_stmt (scn : scene) (stmt : stmt) : scene * Z.prog =
     let bod = norm_expr scn'.env bod in
 
     (* print those *)
-    print_endline ("let " ^ x ^ "\n\t : " ^
-      string_of_vtype scn.scope typ ^ "\n\t = " ^
-      string_of_expr scn.scope bod);
+    if opts.elab_diagnostics then
+      print_endline ("let " ^ x ^ "\n\t : " ^
+        string_of_vtype scn.scope typ ^ "\n\t = " ^
+        string_of_expr scn.scope bod);
 
     (* zonk everything *)
     let ztyp = zonk_type scn.scope (quote scn'.height typ) in
@@ -39,22 +45,25 @@ let rec elab_stmt (scn : scene) (stmt : stmt) : scene * Z.prog =
   | TDef (x, k, t) ->
     let scn', _, vt, k = infer_let_type scn x k t in
 
-    print_endline ("type " ^ x ^ "\n\t : " ^
-      string_of_kind k ^ "\n\t = " ^
-      string_of_vtype scn.scope vt);
+    if opts.elab_diagnostics then
+      print_endline ("type " ^ x ^ "\n\t : " ^
+        string_of_kind k ^ "\n\t = " ^
+        string_of_vtype scn.scope vt);
 
     scn', []
 
   | Infer (x, e) ->
     let (_, te) = infer scn e in
-    print_endline ("infer " ^ x ^ "\n\t : " ^
-      string_of_vtype scn.scope te);
+    if opts.elab_diagnostics then
+      print_endline ("infer " ^ x ^ "\n\t : " ^
+        string_of_vtype scn.scope te);
     scn, []
 
   | TInfer (x, t) ->
     let (_, kt) = kind_of scn t in
-    print_endline ("infer type " ^ x ^ "\n\t : " ^
-      string_of_kind kt);
+    if opts.elab_diagnostics then
+      print_endline ("infer type " ^ x ^ "\n\t : " ^
+        string_of_kind kt);
     scn, []
 
   | Postulate (x, t) ->
@@ -68,7 +77,8 @@ let rec elab_stmt (scn : scene) (stmt : stmt) : scene * Z.prog =
 
   | DataDecl (x, k, ctors) ->
     let scn = declare_data scn x k ctors in
-    print_endline ("declared data " ^ x);
+    if opts.elab_diagnostics then
+      print_endline ("declared data " ^ x);
     scn, []
 
   | Section (sect, stmts) ->
@@ -77,7 +87,7 @@ let rec elab_stmt (scn : scene) (stmt : stmt) : scene * Z.prog =
 
     (* elaborate contents *)
     let go_stmt (acc_scn, acc_prog : scene * Z.prog) (stmt : stmt) =
-      let acc_scn', acc_prog' = elab_stmt acc_scn stmt in
+      let acc_scn', acc_prog' = elab_stmt opts acc_scn stmt in
       acc_scn', acc_prog @ acc_prog'
     in
     let scn, stmts' = List.fold_left go_stmt (scn, []) stmts in
@@ -99,28 +109,43 @@ let builtins_prog : prog = [
   ])
 ]
 
-let elab_prog (prog : prog) : Z.prog =
+let elab_prog (opts : options) (prog : prog) : Z.prog =
   let go_stmt (acc_scn, acc_prog : scene * Z.prog) (stmt : stmt) =
-    let acc_scn', acc_prog' = elab_stmt acc_scn stmt in
+    let acc_scn', acc_prog' = elab_stmt opts acc_scn stmt in
     acc_scn', acc_prog @ acc_prog'
   in
   let preambled = builtins_prog @ prog in
   let _, stmts' = List.fold_left go_stmt (empty_scene, []) preambled in
   stmts'
 
-let compile_prog (prog : prog) : string =
-  prog
-    |> elab_prog
+exception ElabFailure of string
+let compile_prog (opts : options) (prog : prog) : string =
+  try prog
+    |> elab_prog opts
     |> beta_fold_prog
     |> js_of_zonked
     |> string_of_js
-let compile_prog_file (fil : string) : unit =
-  parse_file fil
+  with
+  | UndefinedVar x -> raise @@ ElabFailure ("undefined variable " ^ string_of_name x)
+  | UndefinedQVar x -> raise @@ ElabFailure ("undefined type variable " ^ string_of_name x)
+
+let compile_prog_file (opts : options) (fil : string) : string =
+  let js = parse_file fil
     |> Result.get_ok
-    |> compile_prog
-    |> (print_string "\n\n\nOUTPUT JS:\n==========\n"; print_endline)
-let compile_prog_str (str : string) : unit =
-  parse_str str
+    |> compile_prog opts
+  in
+    if opts.dump_output then begin
+      print_string "\n\n\nOUTPUT JS:\n==========\n";
+      print_endline js;
+    end;
+    js
+let compile_prog_str (opts : options) (str : string) : string =
+  let js = parse_str str
     |> Result.get_ok
-    |> compile_prog
-    |> (print_string "\n\n\nOUTPUT JS:\n==========\n"; print_endline)
+    |> compile_prog opts
+  in 
+    if opts.dump_output then begin
+      print_string "\n\n\nOUTPUT JS:\n==========\n";
+      print_endline js;
+    end;
+    js

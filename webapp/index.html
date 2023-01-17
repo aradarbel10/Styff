@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+  <body>
+    <h1> Try Styff Online! </h1>
+
+    <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.52.2/codemirror.min.css">
+    </link>
+    <script type="text/javascript"
+        src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.52.2/codemirror.min.js">
+    </script>
+
+    <link rel="stylesheet" href="blackboard-black.css">
+
+    <div style="width: 100%; overflow: hidden;">
+        <div style="width: 50%; float: left;">
+            <textarea id="editor"></textarea>
+        </div>
+        <div style="width: 49%; float: right;">
+            <textarea id="outputer"></textarea>
+        </div>
+    </div>
+    
+
+    <script>
+        var editor = CodeMirror.fromTextArea(document.getElementById("editor"), {
+            lineNumbers: true,
+            theme: "blackboard-black",
+        });
+        editor.setValue("default program");
+        editor.save();
+
+        let getEditorContents = function() { return editor.getValue() };
+
+        var outputer = CodeMirror.fromTextArea(document.getElementById("outputer"), {
+            lineNumbers: false,
+            readOnly: true,
+            theme: "blackboard-black"
+        });
+
+        let outputError = function(msg) { outputer.setValue("compilation error: " + msg + "\n") };
+        let outputClear = function() { outputer.setValue("") };
+        let outputPrint = function(msg) {
+            var cur = outputer.getValue();
+            outputer.setValue(cur + msg + "\n");
+        }
+    </script>
+
+    <button type="button" id="button">Run</button>
+
+    <script type="text/javascript" src="../_build/default/webapp/webapp.bc.js"></script>
+
+  </body>
+</html>

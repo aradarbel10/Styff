@@ -1,0 +1,6 @@
+(executable
+ (name webapp)
+ (libraries styff js_of_ocaml-lwt)
+ (modes js)
+ (preprocess
+  (pps js_of_ocaml-ppx)))

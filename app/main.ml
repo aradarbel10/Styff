@@ -2,4 +2,4 @@ open Styff.Exec
 
 let () =
   print_newline ();
-  compile_prog_file "examples/builtins.stf";
+  ignore (compile_prog_file {elab_diagnostics = true; dump_output = true} "examples/builtins.stf");
