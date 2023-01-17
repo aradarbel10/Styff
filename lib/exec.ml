@@ -66,6 +66,11 @@ let rec elab_stmt (opts : options) (scn : scene) (stmt : stmt) : scene * Z.prog 
         string_of_kind kt);
     scn, []
 
+  | Print e ->
+    let (e, _) = infer scn e in
+    let e = zonk_expr scn.scope e in
+    scn, [Z.Print e]
+
   | Postulate (x, t) ->
     let (t, _) = kind_of scn t in
     let vt = eval scn.env t in

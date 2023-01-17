@@ -38,6 +38,7 @@ type stmt =
 | TDef of string * rkind option * rtyp
 | Infer of string * rexpr
 | TInfer of string * rtyp
+| Print of rexpr
 | Postulate of string * rtyp
 | PostulateType of string * rkind
 | DataDecl of string * rkind option * rctor list

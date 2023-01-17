@@ -36,4 +36,5 @@ and arg = [`TmArg of expr | `TpArg of typ]
 type stmt =
 | Def of bool * name * typ * expr
 | TDef of name * kind * typ
+| Print of expr
 and prog = stmt list

@@ -51,6 +51,7 @@ rule read = parse
   | "infer"     { INFER }
   | "postulate" { POSTULATE }
   | "type"      { TYPE }
+  | "print"     { PRINT }
   | "data"      { DATA }
   | "section"   { SECTION }
   | "where"     { WHERE }

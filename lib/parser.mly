@@ -60,7 +60,7 @@ let single_name : name -> string = function
 %token <Syntax.Common.name> INFIXL7
 %token <Syntax.Common.name> INFIX8 
 %token <Syntax.Common.name> INFIXL9
-%token INFER TYPE POSTULATE DATA SECTION WHERE PIPE MATCH WITH END
+%token INFER TYPE PRINT POSTULATE DATA SECTION WHERE PIPE MATCH WITH END
 %token LAM ARROW LPAREN RPAREN LCURLY RCURLY COLON DOT LET REC EQ IN HOLE
 %token STAR
 
@@ -110,6 +110,7 @@ stmt:
   | TYPE; x=bnd_name; k=option(bind_annotk); EQ; t=typ { TDef (x, k, t) }
   | INFER; x=bnd_name; EQ; e=expr { Infer (x, e) }
   | INFER; TYPE; x=bnd_name; EQ; t=typ { TInfer (x, t) }
+  | PRINT; e=expr { Print e }
   | POSTULATE; x=bnd_name; COLON; t=typ { Postulate (x, t) }
   | POSTULATE; TYPE; x=bnd_name; COLON; k=kind { PostulateType (x, k) }
   | d=data_decl { d }
@@ -177,6 +178,8 @@ typ:
     { RForall (x, k, t) }
   | LAM; x=bnd_name; k=option(bind_annotk); DOT; e=typ
     %prec WEAK { RTAbs (x, k, e) }
+  | LET; x=bnd_name; k=option(bind_annotk); EQ; t1=typ; IN; t2=typ
+    %prec WEAK { RTLet (x, k, t1, t2) }
   | t1=typ; op=infix_op; t2=typ { RTapp (RTapp (RQvar op, t1), t2) }
 t_atom:
   | x=qual_name { RQvar x }

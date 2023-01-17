@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
   <body>
-    <h1> Try Styff Online! </h1>
+    <h1 style="font-family: Arial, Helvetica, sans-serif; text-align: center;"> Try Styff Online! </h1>
 
     <link rel="stylesheet"
         href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.52.2/codemirror.min.css">
@@ -27,8 +27,8 @@
             lineNumbers: true,
             theme: "blackboard-black",
         });
-        editor.setValue("default program");
-        editor.save();
+        editor.setValue("let x = 5\nprint x");
+        editor.setSize(null, 500);
 
         let getEditorContents = function() { return editor.getValue() };
 
@@ -37,6 +37,7 @@
             readOnly: true,
             theme: "blackboard-black"
         });
+        outputer.setSize(null, 500);
 
         let outputError = function(msg) { outputer.setValue("compilation error: " + msg + "\n") };
         let outputClear = function() { outputer.setValue("") };

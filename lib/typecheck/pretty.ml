@@ -49,7 +49,7 @@ and string_of_expr (scp : scope) (expr : expr) : string =
   | `TmArg e -> go 0 scp e
   | `TpArg t -> "{" ^ string_of_type scp t ^ "}"
   and go (p : int) (scp : scope) = function
-  | Var i -> string_of_name (Scope.ith scp i) ^ "#" ^ string_of_int (unIdx i)
+  | Var i -> string_of_name (Scope.ith scp i)
   | Ctor (i, es) -> string_of_name (Scope.ith scp i)
     ^ "(" ^ String.concat ", " (List.map (go_arg scp) es) ^ ")"
   | Lam _ | Tlam _ as e -> parens (p > 0) @@ "λ" ^ go_lam scp e

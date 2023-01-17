@@ -10,6 +10,7 @@ module JS = struct
   | IfTagElse of expr * (name * block) list
   | Destruct of string list * expr
   | Ret of expr
+  | Print of expr
   and expr =
   | Var of name
   | Lam of string * block
@@ -33,6 +34,8 @@ let js_of_zonked (prog : Z.prog) : JS.block =
   | Def (_, x, _, e) ->
     go_expr e (fun r -> [JS.Assgn (x, r)])
   | TDef _ -> []
+  | Print e ->
+    go_expr e (fun r -> [JS.Print r])
 
   and go_expr (e : Z.expr) (k : JS.expr -> JS.block) : JS.block =
     let ( let* ) = go_expr in
@@ -118,6 +121,8 @@ let string_of_js =
       String.make indent '\t' ^ "let [_" ^ String.concat "" (List.map (fun x -> ", " ^ x) xs) ^ "] = " ^ go_expr indent e ^ ";\n"
     | Ret e ->
       String.make indent '\t' ^ "return " ^ go_expr indent e ^ ";\n"
+    | Print e ->
+      String.make indent '\t' ^ "outputPrint(" ^ go_expr indent e ^ ");\n"
   and go_expr (indent : int) : JS.expr -> string = function
   | Var x -> string_of_name x
   | Lam (x, e) -> "(" ^ x ^ " => " ^ go_expr indent (Block e) ^ ")"

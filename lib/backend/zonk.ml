@@ -134,4 +134,5 @@ let beta_fold_prog : Z.prog -> Z.prog =
   let go_stmt : Z.stmt -> Z.stmt = function
   | Def (rc, x, t, e) -> Def (rc, x, beta_fold_typ [] t, beta_fold_expr e)
   | TDef (x, k, t) -> TDef (x, k, beta_fold_typ [] t)
+  | Print str -> Print str
   in List.map go_stmt
