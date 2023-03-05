@@ -2,13 +2,13 @@ data Nat : ∗ where
 | zero : Nat
 | succ : Nat → Nat
 
-let three = succ (succ (succ zero))
+let rec three = succ (succ (succ zero))
 
 data List : ∗ → ∗ where
 | nil  : {a} → List a
 | (::) : {a} → a → List a → List a
 
-let nums : List Nat = zero :: succ zero :: succ (succ zero) :: three :: nil
+let rec nums : List Nat = zero :: succ zero :: succ (succ zero) :: three :: nil
 
 (* pattern matching *)
 let rec nat_add (a : Nat) (b : Nat) : Nat =
@@ -22,6 +22,10 @@ let rec list_concat {T : ∗} (xs : List T) (ys : List T) : List T =
   | nil . ys
   | x :: xs' . x :: (list_concat xs' ys)
   end
+
+print three
+print nat_add three three
+print list_concat nums nums
 
 (* GADTs *)
 data T : ∗ → ∗ where

@@ -30,6 +30,7 @@ type rexpr =
 | RLet of bool * string * rparam list * rtyp option * rexpr * rexpr
 | RMatch of rexpr * (rpattern * rexpr) list
 | RLit of lit
+| RSrcRange of src_range * rexpr
 
 type rctor = RCtor of {nam : string; t : rtyp}
 

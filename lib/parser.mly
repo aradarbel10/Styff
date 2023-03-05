@@ -39,27 +39,30 @@ let rec joinTele : string list * annotation -> rparam list = function
 let joinTeles : (string list * annotation) list -> rparam list =
   fun teles -> List.concat @@ List.map joinTele teles
 
-exception UnexpectedQualified
-let single_name : name -> string = function
+(*
+let single_name (lexbuf : Lexing.lexbuf) : name -> string = function
 | [x] -> x
-| _ -> raise UnexpectedQualified
+| x -> raise (ParseFailure {code = UnexpectedQualified x; range = Lexing.buf_rng lexbuf})
+*)
+
 
 %}
 
 %token EOF
 
+%token <string> SINGLE_IDENT
 %token <Syntax.Common.name> IDENT
 %token <int> NUM
-%token <Syntax.Common.name> INFIXL0
-%token <Syntax.Common.name> INFIXL1
-%token <Syntax.Common.name> INFIXL2
-%token <Syntax.Common.name> INFIX3 
-%token <Syntax.Common.name> INFIX4
-%token <Syntax.Common.name> INFIXR5
-%token <Syntax.Common.name> INFIXL6
-%token <Syntax.Common.name> INFIXL7
-%token <Syntax.Common.name> INFIX8 
-%token <Syntax.Common.name> INFIXL9
+%token <string> INFIXL0
+%token <string> INFIXL1
+%token <string> INFIXL2
+%token <string> INFIX3
+%token <string> INFIX4
+%token <string> INFIXR5
+%token <string> INFIXL6
+%token <string> INFIXL7
+%token <string> INFIX8
+%token <string> INFIXL9
 %token INFER TYPE PRINT POSTULATE DATA SECTION WHERE PIPE MATCH WITH END
 %token LAM ARROW LPAREN RPAREN LCURLY RCURLY COLON DOT LET REC EQ IN HOLE
 %token STAR
@@ -93,7 +96,7 @@ let single_name : name -> string = function
 %type <string> bnd_name
 %type <name> qual_name
 
-%type <name> infix_op
+%type <string> infix_op
 
 %type <rtyp> bind_annot
 %type <rkind> bind_annotk
@@ -116,7 +119,7 @@ stmt:
   | d=data_decl { d }
   | SECTION; x=bnd_name; WHERE; stmts=list(stmt); END { Section (x, stmts) }
 
-expr:
+unloc_expr:
   | f=e_atom; es=list(arg) { unfoldApp f es }
   | e=expr; COLON; t=typ { RAnn (e, t) }
   | LAM; teles=lam_args; DOT; e=expr
@@ -127,7 +130,9 @@ expr:
     let (x,teles,t) = xtt in
     RLet (Option.is_some rc, x, joinTeles teles, t, e, r)
     }
-  | e1=expr; op=infix_op; e2=expr { RApp (RApp (RVar op, e1), e2) }
+  | e1=expr; op=infix_op; e2=expr { RApp (RApp (RVar [op], e1), e2) }
+%inline expr:
+  | e=unloc_expr { RSrcRange ($loc, e) }
 arg:
   | LCURLY; t=typ; RCURLY { InstArg t }
   | e=e_atom { AppArg e }
@@ -137,7 +142,7 @@ lam_args:
   | x=bnd_name; COLON; t=typ { [[x], TypeAnnot (Some t)] }
 let_args:
   | x=bnd_name; teles=list(tele); t=option(bind_annot) { (x, teles, t) }
-  | x1=bnd_name; op=infix_op; x2=bnd_name { (single_name op, [[x1], TypeAnnot None; [x2], TypeAnnot None], None) }
+  | x1=bnd_name; op=infix_op; x2=bnd_name { (op, [[x1], TypeAnnot None; [x2], TypeAnnot None], None) }
 %inline ttele:
   | LCURLY; xs=nonempty_list(bnd_name); k=option(bind_annotk); RCURLY
     { (xs, KindAnnot k) }
@@ -154,11 +159,12 @@ e_atom:
   | n=NUM { RLit (`Int n) }
   | MATCH; e=e_atom; WITH; bs=list(branch); END { RMatch (e, bs) }
 
+%inline bnd_name:
+  | x=SINGLE_IDENT { x }
+  | LPAREN; op=infix_op; RPAREN { op }
 %inline qual_name:
   | x=IDENT { x }
-  | LPAREN; op=infix_op; RPAREN { op }
-%inline bnd_name:
-  | x=qual_name { single_name x }
+  | x=bnd_name { [x] }
 %inline infix_op:
   | op=INFIXL0 { op }
   | op=INFIXL1 { op }
@@ -180,7 +186,7 @@ typ:
     %prec WEAK { RTAbs (x, k, e) }
   | LET; x=bnd_name; k=option(bind_annotk); EQ; t1=typ; IN; t2=typ
     %prec WEAK { RTLet (x, k, t1, t2) }
-  | t1=typ; op=infix_op; t2=typ { RTapp (RTapp (RQvar op, t1), t2) }
+  | t1=typ; op=infix_op; t2=typ { RTapp (RTapp (RQvar [op], t1), t2) }
 t_atom:
   | x=qual_name { RQvar x }
   | LPAREN; t=typ; RPAREN { t }
@@ -205,7 +211,7 @@ branch:
   | PIPE; p=pattern; DOT; e=expr { (p, e) }
 pattern:
   | ctor=qual_name; args=list(pattern_arg); { RPCtor (ctor, args) }
-  | lhs=bnd_name; op=infix_op; rhs=bnd_name { RPCtor (op, [PVar lhs; PVar rhs]) }
+  | lhs=bnd_name; op=infix_op; rhs=bnd_name { RPCtor ([op], [PVar lhs; PVar rhs]) }
 pattern_arg:
   | v=bnd_name { PVar v }
   | LCURLY; v=bnd_name; RCURLY { PTvar v }

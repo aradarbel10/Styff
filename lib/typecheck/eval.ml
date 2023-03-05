@@ -1,8 +1,5 @@
 open Syntax.Core
-
-exception IndexOutOfScope
-exception AppNonAbs
-exception IllLengthedMask
+open Errors
 
 let rec forcek (k : kind) : kind =
   match k with
@@ -38,7 +35,7 @@ let rec eval (env : env) : typ -> vtyp = function
 | Qvar i ->
   begin match lookup i env with
   | Some (_, _, t) -> t
-  | None -> raise IndexOutOfScope
+  | None -> raise (EvalFailure {code = IndexOutOfScope})
   end
 | Base b -> VBase b
 
@@ -51,7 +48,7 @@ and vapp (t1 : vtyp) (t2 : vtyp): vtyp =
   match force t1 with
   | VAbs (_, c) -> capp c t2
   | VNeut (hd, sp) -> VNeut (hd, t2 :: sp)
-  | _ -> raise AppNonAbs
+  | _ -> raise (EvalFailure {code = AppNonAbs})
 and vtvar (tv : tvar ref) (k : kind) : vtyp =
   match !tv with
   | Solved t -> t
@@ -65,7 +62,7 @@ and app_mask (env : env) (msk : mask) (hd : vtyp) : vtyp =
     | `EBound -> vapp hd t
     | `EDefed -> hd
     end
-  | _ -> raise IllLengthedMask
+  | _ -> raise (EvalFailure {code = IllLengthedMask})
 
 and app_spine (t : vtyp) (sp : spine) : vtyp =
   match sp with

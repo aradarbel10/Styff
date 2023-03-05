@@ -112,13 +112,10 @@ end
   height - length of tctx, stored separately to avoid re-calculation
   
   scope - all the bound names (term and type level) locally visible
-  prefix - the path leading to the current scope
-
-  trace - a "call stack" of the type checker
+  range - the range in source of the AST node currently processed
 *)
 type ctx = vtyp list
 type tctx = kind list
-type trace = string list
 
 type scene = {
   ctx : ctx;
@@ -132,7 +129,7 @@ type scene = {
   env : env;
 
   scope : scope;
-  trace : trace;
+  mutable range : src_range;
 }
 
 let empty_scope : scope = {nms = ["", []]; tps = ["", []]; prefix = []}
@@ -145,7 +142,7 @@ let empty_scene : scene = {
   tctx = [];
   env = [];
   scope = empty_scope;
-  trace = []
+  range = dummy_range;
 }
 
 let assume (x : string) (t : vtyp) (scn : scene) : scene =
@@ -200,9 +197,4 @@ let lookup_type (nm : name) (scn : scene) : (idx * kind) option =
     let k = List.nth scn.tctx i in
     Some (Idx i, k)
 
-let log (scn : scene) (msg : string) : scene = {scn with trace = msg :: scn.trace}
-let print_event (msg : string) : unit =
-  print_endline @@ "while " ^ msg
-let complain (scn : scene) (err : string) : unit =
-  print_endline err;
-  List.iter print_event scn.trace
+let qualify (scn : scene) (x : string) : name = List.rev scn.scope.prefix @ [x]

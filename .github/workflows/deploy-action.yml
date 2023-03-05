@@ -1,0 +1,34 @@
+name: Deploy Webapp
+on:
+  push:
+    branches: [ master ]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Starting webapp deployment!"
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Set up OCaml environment
+        uses: ocaml/setup-ocaml@v2
+      - run: opam install js_of_ocaml js_of_ocaml-ppx
+
+      - name: Build project
+        run: opam exec -- dune build
+
+      - name: Construct artifact
+        run: |
+          mkdir _artifact
+          cp _build/default/webapp/webapp.bc.js _artifact/
+          cp webapp/index.html _artifact/
+          cp webapp/blackboard-black.css _artifact/
+
+      - name: Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4.2.5
+        with:
+          branch: gh-pages
+          folder: _artifact
+
+      - name: Cleanup
+        run: rm -rf _artifact

@@ -23,8 +23,10 @@ let rec mem_once (y : 'a) (xs : 'a list) : bool =
       then not (List.mem y xs)
       else mem_once y xs
 
+(* split the list to the `n`-long init and the rest, or if the list is too short return `None` *)
 let rec split_at (i : int) (xs : 'a list) : ('a list * 'a list) option =
   if i < 0 then raise (Invalid_argument "split_at") else
+  if i = 0 then Some ([], xs) else
   match xs with
   | [] -> None
   | x :: xs ->
@@ -37,3 +39,11 @@ let rec drop (n : int) (xs : 'a list) : 'a list =
   match xs with
   | [] -> []
   | _ :: xs -> drop (n - 1) xs
+
+let take_or_less (n : int) (xs : 'a list) : 'a list * int option =
+  match split_at n xs with
+  | None -> xs, None
+  | Some (xs, rest) -> xs, Some (List.length rest)
+
+let diff (xs : 'a list) (ys : 'a list) : 'a list =
+  List.filter (fun x -> not (List.mem x ys)) xs

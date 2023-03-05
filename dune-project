@@ -8,7 +8,7 @@
 
 (package
   (name styff)
-  (synopsis "A type checker for system F with higher order pattern unification and implicit parameters")
+  (synopsis "A functional language with (system F-omega) polymorphism and GADTs")
   (depends ocaml dune menhir))
 
 (using menhir 2.1)

@@ -20,7 +20,16 @@ let rec string_of_type (scp : scope) (t : typ) : string =
   | Qvar i -> string_of_name (Scope.ith_type scp i)
   | Inserted _ -> "?inserted"
   | Arrow (lt, rt) -> parens (p > 1) @@ go 2 scp lt ^ " → " ^ go 1 scp rt
-  | Tapp (t1, t2) -> parens (p > 2) @@ go 2 scp t1 ^ " " ^ go 3 scp t2
+  | Tapp (t1, t2) ->
+    (* sketchy way to hide parameters applied on flexible meta *)
+    let rec tapp_head : typ -> typ = function
+    | Tapp (tapp, _) -> tapp_head tapp
+    | t -> t
+    in
+    begin match tapp_head t1 with
+    | Tvar _ as tv -> go p scp tv
+    | _ -> parens (p > 2) @@ go 2 scp t1 ^ " " ^ go 3 scp t2
+    end
   | TLet (x, k, t, rest) -> parens (p > 0) @@ "let type " ^ x ^ " : " ^ string_of_kind k
     ^ " = " ^ go 0 scp t ^ " in " ^ go 0 (Scope.tpush scp [x]) rest
   | TAbs (x, k, B t) -> parens (p > 0) @@ "λ(" ^ x ^ " : " ^ string_of_kind k ^ "). " ^ go 0 (Scope.tpush scp [x]) t

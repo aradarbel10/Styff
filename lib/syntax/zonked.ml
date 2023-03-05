@@ -8,7 +8,7 @@ type kind =
 | KArrow of kind * kind
 
 type typ =
-| Qvar of name
+| Qvar of string
 | Arrow of typ * typ
 | TApp of typ * typ
 | TAbs of string * kind * typ
@@ -16,10 +16,10 @@ type typ =
 | Prod of typ list
 | Base of base
 
-type pattern = PCtor of name * pat_arg list
+type pattern = PCtor of string * pat_arg list
 and expr =
-| Var of name
-| Ctor of name * arg list
+| Var of string
+| Ctor of string * arg list
 | Lam of string * typ * expr
 | Tlam of string * kind * expr
 | App of expr * expr
@@ -34,7 +34,6 @@ and arg = [`TmArg of expr | `TpArg of typ]
 
 
 type stmt =
-| Def of bool * name * typ * expr
-| TDef of name * kind * typ
+| Def of string * typ * expr
 | Print of expr
 and prog = stmt list

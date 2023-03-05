@@ -84,6 +84,15 @@ and kvar =
 | KSolved of kind
 | KUnsolved of string
 
+type stmt =
+| Def of bool * name * typ * expr
+| TDef of name * kind * typ
+| Print of expr
+| Postulate of name * typ
+| PostulateType of name * kind
+| DataDecl of name * kind * name list
+and prog = stmt list
+
 
 let lookup (Idx i) (env : env) = List.nth_opt env i
 let height env : lvl = Lvl (List.length env)

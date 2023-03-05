@@ -1,8 +1,7 @@
 {
 open Lexing
 open Parser
-
-exception SyntaxError of string
+open Typecheck.Errors
 
 let next_line lexbuf =
   let pos = lexbuf.lex_curr_p in
@@ -11,13 +10,11 @@ let next_line lexbuf =
                pos_lnum = pos.pos_lnum + 1
     }
 
-let print_err_pos lexbuf =
-  let pos = lexbuf.lex_curr_p in
-  "input:" ^ string_of_int pos.pos_lnum ^ ":" ^ string_of_int (pos.pos_cnum - pos.pos_bol + 1)
+let buf_rng (lexbuf : lexbuf) : Syntax.Common.src_range =
+  Lexing.lexeme_start_p lexbuf, Lexing.lexeme_end_p lexbuf
 
-let classify_op (op' : string) =
-  let op = [op'] in
-  match op'.[0] with
+let classify_op (op : string) =
+  match op.[0] with
   | ';' | '?' | ',' -> INFIXL0 op
   | '|' -> INFIXL1 op
   | '&' -> INFIXL2 op
@@ -60,6 +57,7 @@ rule read = parse
   | "with"      { WITH }
   | "end"       { END }
   | "∗"         { STAR }
+  | "Type"      { STAR }
   | "lam"       { LAM }
   | "λ"         { LAM }
   | '\\'        { LAM }
@@ -76,29 +74,28 @@ rule read = parse
   | '{'         { LCURLY }
   | '}'         { RCURLY }
   | ':'         { COLON }
+  | single_ident{ SINGLE_IDENT (Lexing.lexeme lexbuf) }
   | path_ident  { IDENT (sep_ident (Lexing.lexeme lexbuf)) }
   | operator    { classify_op (Lexing.lexeme lexbuf) }
   | unum        { NUM (int_of_string (Lexing.lexeme lexbuf)) }
-  | _           { raise (SyntaxError ("Unexpected char: " ^ Lexing.lexeme lexbuf)) }
+  | _           {
+    let rng = buf_rng lexbuf in
+    let lex = Lexing.lexeme lexbuf in
+    raise (LexFailure (rng, lex))
+    }
   | eof         { EOF }
 
 (* TODO nested comments *)
 and read_comment = parse
   | "*)"        { read lexbuf }
   | newline     { next_line lexbuf; read_comment lexbuf }
-  | eof         { raise (SyntaxError "file ends before comment") }
   | _           { read_comment lexbuf }
 
 {
 
 let parse_buf lexbuf =
-  try Ok (whole read lexbuf) with
-    | SyntaxError reason ->
-      let msg = print_err_pos lexbuf ^ ": " ^ reason in
-      Error msg
-    | Error ->
-      let msg = print_err_pos lexbuf ^ ": syntax error" in
-      Error msg
+  try whole read lexbuf with
+  | Error -> raise (ParseFailure (SyntaxErr (buf_rng lexbuf)))
 
 let parse_str str =
   let lexbuf = Lexing.from_string str in
