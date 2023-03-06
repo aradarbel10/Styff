@@ -22,7 +22,7 @@ jobs:
       - name: Construct artifact
         run: |
           mkdir artifact
-          cp -r webapp/artifact/ artifact/
+          cp -r webapp/artifact/. artifact/
 
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4.2.5

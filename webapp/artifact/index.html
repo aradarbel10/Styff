@@ -1,56 +1,69 @@
 <!DOCTYPE html>
 <html>
-  <body>
-    <h1 style="font-family: Arial, Helvetica, sans-serif; text-align: center;"> Try Styff Online! </h1>
 
-    <link rel="stylesheet"
-        href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.52.2/codemirror.min.css">
-    </link>
-    <script type="text/javascript"
-        src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.52.2/codemirror.min.js">
-    </script>
+<body>
+  <h1 style="font-family: Arial, Helvetica, sans-serif; text-align: center;"> Try Styff Online! </h1>
 
-    <link rel="stylesheet" href="blackboard-black.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.52.2/codemirror.min.css">
+  </link>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.52.2/codemirror.min.js">
+  </script>
 
-    <div style="width: 100%; overflow: hidden;">
-        <div style="width: 50%; float: left;">
-            <textarea id="editor"></textarea>
-        </div>
-        <div style="width: 49%; float: right;">
-            <textarea id="outputer"></textarea>
-        </div>
+  <link rel="stylesheet" href="blackboard-black.css">
+
+  <div style="width: 100%; overflow: hidden;">
+    <div style="width: 50%; float: left;">
+      <textarea id="editor"></textarea>
     </div>
-    
+    <div style="width: 49%; float: right;">
+      <textarea id="outputer"></textarea>
+    </div>
+  </div>
 
-    <script>
-        var editor = CodeMirror.fromTextArea(document.getElementById("editor"), {
-            lineNumbers: true,
-            theme: "blackboard-black",
-            lineWrapping: true,
-        });
-        editor.setValue("let x = 5\nprint x");
-        editor.setSize(null, 500);
+  <script>
+    const defaultProg =
+`type int = builtin.int
+let ( + ) = builtin.int-add
+let ( * ) = builtin.int-mul
 
-        let getEditorContents = function() { return editor.getValue() };
+let x : int = 1*2 + 3*4 + 5*6
+print x`
 
-        var outputer = CodeMirror.fromTextArea(document.getElementById("outputer"), {
-            lineNumbers: false,
-            readOnly: true,
-            theme: "blackboard-black"
-        });
-        outputer.setSize(null, 500);
+    var editor = CodeMirror.fromTextArea(document.getElementById("editor"), {
+      lineNumbers: true,
+      theme: "blackboard-black",
+      lineWrapping: true,
+    });
+    editor.setValue(defaultProg);
+    editor.setSize(null, 500);
 
-        let outputError = function(msg) { outputer.setValue("compilation error: " + msg + "\n") };
-        let outputClear = function() { outputer.setValue("") };
-        let outputPrint = function(msg) {
-            var cur = outputer.getValue();
-            outputer.setValue(cur + msg + "\n");
-        }
-    </script>
+    let getEditorContents = function () { return editor.getValue() };
 
-    <button type="button" id="button">Run</button>
+    var outputer = CodeMirror.fromTextArea(document.getElementById("outputer"), {
+      lineNumbers: false,
+      readOnly: true,
+      theme: "blackboard-black"
+    });
+    outputer.setSize(null, 500);
 
-    <script type="text/javascript" src="./webapp.js"></script>
+    let outputError = function (msg) { outputer.setValue("compilation error: " + msg + "\n") };
+    let outputClear = function () { outputer.setValue("") };
+    let outputPrint = function (msg) {
+      var cur = outputer.getValue();
+      outputer.setValue(cur + msg + "\n");
+    }
+  </script>
 
-  </body>
+  <button type="button" id="button">Run</button>
+
+  <script type="text/javascript" src="./webapp.js"></script>
+
+
+  <p>
+    Styff is a functional programming language currently under development based on System F-omega. </br>
+    <a href="https://github.com/aradarbel10/Styff/tree/master/examples" target="_blank"> Example programs </a> </br>
+    <a href="https://github.com/aradarbel10/Styff" target="_blank"> Styff on GitHub </a>
+  </p>
+</body>
+
 </html>
