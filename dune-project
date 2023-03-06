@@ -12,3 +12,4 @@
   (depends ocaml dune menhir))
 
 (using menhir 2.1)
+(using directory-targets 0.1)

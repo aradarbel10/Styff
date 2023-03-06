@@ -17,20 +17,18 @@ jobs:
       - run: opam install js_of_ocaml js_of_ocaml-ppx js_of_ocaml-lwt
 
       - name: Build project
-        run: opam exec -- dune build
+        run: opam exec -- dune build webapp
 
       - name: Construct artifact
         run: |
-          mkdir _artifact
-          cp _build/default/webapp/webapp.bc.js _artifact/
-          cp webapp/index.html _artifact/
-          cp webapp/blackboard-black.css _artifact/
+          mkdir artifact
+          cp webapp/artifact/ artifact/
 
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4.2.5
         with:
           branch: gh-pages
-          folder: _artifact
+          folder: artifact
 
       - name: Cleanup
-        run: rm -rf _artifact
+        run: rm -rf artifact

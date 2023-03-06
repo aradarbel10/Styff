@@ -1,6 +1,5 @@
 _build/
 _opam/
-webapp/_artifact/
 
 node_modules/
 

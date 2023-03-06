@@ -4,3 +4,10 @@
  (modes js)
  (preprocess
   (pps js_of_ocaml-ppx)))
+
+(rule
+ (deps ../_build/default/webapp/webapp.bc.js)
+ (target ./webapp.js)
+ (mode
+  (promote (into artifact/) (until-clean)))
+ (action (copy %{deps} %{target})))
