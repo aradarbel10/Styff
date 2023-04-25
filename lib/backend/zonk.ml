@@ -17,7 +17,7 @@ let sanitize : name -> name = List.map sanitize_str
 type zonk_scope = {nms : string list; tps : string list}
 
 exception UnsolvedKVar
-exception UnsolvedTVar
+exception UnsolvedTVar of string
 let rec zonk_kind (k : C.kind) : Z.kind =
   match k with
   | Star -> Star
@@ -33,7 +33,7 @@ let zonk_type : zonk_scope -> C.typ -> Z.typ =
     | Tvar (tv, _) ->
       begin match !tv with
       | Solved t -> go scp (quote (C.height scp.tps) t)
-      | Unsolved _ -> raise UnsolvedTVar
+      | Unsolved x -> raise (UnsolvedTVar x)
       end
     | Inserted _ -> raise (EvalFailure {code = UnnormalizedInsertedMeta})(* failwith "absurd! normalized types cannot contain inserted metas" *)
     | Qvar i -> Qvar (at_idx scp.tps i)
@@ -51,7 +51,7 @@ let zonk_expr : zonk_scope -> C.expr -> Z.expr =
     | Var i -> Var (at_idx scp.nms i)
     | Ctor (i, es) -> Ctor (at_idx scp.nms i, List.map (go_arg scp) es)
     | Lam (x, t, e) -> Lam (x, zonk_type scp t, go {scp with nms = sanitize_str x :: scp.nms} e)
-    | Tlam (x, k, e) -> Tlam (x, zonk_kind k, go {scp with tps = sanitize_str x :: scp.tps} e)
+    | Tlam (x, k, e, _) -> Tlam (x, zonk_kind k, go {scp with tps = sanitize_str x :: scp.tps} e)
     | App (e1, e2) -> App (go scp e1, go scp e2)
     | Inst (e, t) -> Inst (go scp e, zonk_type scp t)
     | Let (rc, x, _, e, e') ->

@@ -2,13 +2,13 @@ data Nat : ∗ where
 | zero : Nat
 | succ : Nat → Nat
 
-let rec three = succ (succ (succ zero))
+let three = succ (succ (succ zero))
 
 data List : ∗ → ∗ where
 | nil  : {a} → List a
 | (::) : {a} → a → List a → List a
 
-let rec nums : List Nat = zero :: succ zero :: succ (succ zero) :: three :: nil
+let nums : List Nat = zero :: succ zero :: succ (succ zero) :: three :: nil
 
 (* pattern matching *)
 let rec nat_add (a : Nat) (b : Nat) : Nat =
@@ -30,10 +30,10 @@ print list_concat nums nums
 (* GADTs *)
 data T : ∗ → ∗ where
 | T1 : {a} → a → T a
-| T2 : int → T bool
+| T2 : builtin.int → T builtin.bool
 
 let useT {b : ∗} (t : T b) : b =
   match t with
   | T1 x . x
-  | T2 n . true
+  | T2 n . builtin.bool-true
   end

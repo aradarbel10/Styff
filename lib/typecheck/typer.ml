@@ -8,17 +8,13 @@ open Pattern
 
 open Errors
 
-(* exception UndefinedVar of name
-exception UndefinedQVar of name
-exception UnificationFailure of string * string *)
-
 (* wrapper for [unify] to catch errors *)
 let unify' (scn : scene) (expect : vtyp) (actual : vtyp) =
   try unify scn.height Global expect actual with
   | Ununifiable ->
     let expect_str = string_of_vtype scn.scope expect in
     let actual_str = string_of_vtype scn.scope actual in
-    elab_complain scn (UnificationFailure (expect_str, actual_str)) (* Failure ("unable to unify " ^ str ^ " ~/~ " ^ str') *)
+    elab_complain scn (UnificationFailure (expect_str, actual_str))
 
 let infer_lit : lit -> base = function
 | `Int _ -> `Int
@@ -52,7 +48,7 @@ let lams_ctor (hi' : lvl) (Idx ctor : idx) (params : vparam list) =
     Lam (a, quote hi t, go hi ps)
   | `TpParam k :: ps ->
     let b = freshen_str "b" in
-    Tlam (b, k, go (inc hi) ps)
+    Tlam (b, k, go (inc hi) ps, `inserted)
   in go hi' params
 
 (* make sure the function is fully applied to all its arguments by wrapping it in lambdas *)
@@ -77,7 +73,7 @@ let saturate (hi : lvl) (typ : vtyp) (fn : arg list -> expr) : expr =
     Lam (a, t, go ps)
   | `TpParam k :: ps ->
     let b = freshen_str "b" in
-    Tlam (b, k, go ps)
+    Tlam (b, k, go ps, `inserted)
   in go params
 
 
@@ -91,7 +87,7 @@ let insert (scn : scene) (e, t : expr * vtyp) : expr * vtyp =
   | t -> (e, t)
 let insert_unless (scn : scene) (e, t : expr * vtyp) : expr * vtyp =
   match e with
-  | Tlam _ -> (e, t)
+  | Tlam (_, _, _, `user) -> (e, t) (* don't immediately apply user's lambdas! *)
   | _ -> insert scn (e, t)
 
 (* embed raw language kinds ↪ core language kinds *)
@@ -152,6 +148,12 @@ and infer_let_type (scn : scene) (x : string) (_ : rkind option) (t : rtyp) : sc
   let t = quote scn.height vt in
   (define_typ x vt k scn, t, vt, k)
 
+(* intermediary type used in inference lookahead *)
+type split_arg = [`app of rexpr | `inst of rtyp]
+type splitted =
+| Ctor of idx * vparam list * split_arg list
+| Expr of expr * vtyp
+
 (* given an expression, return its core representation and infer its type *)
 let rec infer (scn : scene) : rexpr -> expr * vtyp = function
 | RSrcRange (rng, e) -> scn.range <- rng; infer scn e
@@ -180,7 +182,7 @@ let rec infer (scn : scene) : rexpr -> expr * vtyp = function
     | ["builtin"; "bool-false"] -> Lit (`Bool false), t
     | _ -> match List.assoc_opt x scn.ctor_params with
       | None -> Var i, t
-      | Some params -> insert scn (lams_ctor scn.height i params, t)
+      | Some params -> lams_ctor scn.height i params, t
   end
 
 | RLam (x, xt, e) ->
@@ -191,7 +193,7 @@ let rec infer (scn : scene) : rexpr -> expr * vtyp = function
 | RTlam (x, xk, e) ->
   let xk = maybe_rkind "k" xk in
   let (e, te) = insert_unless scn @@ infer (assume_typ x xk `EUnsolved scn) e in
-  (Tlam (x, xk, e), VForall (x, clos_of scn te xk))
+  (Tlam (x, xk, e, `user), VForall (x, clos_of scn te xk))
 
 | RApp (e1, e2) ->
   let (e1, te1) = insert scn @@ infer scn e1 in
@@ -204,6 +206,7 @@ let rec infer (scn : scene) : rexpr -> expr * vtyp = function
     (lt, rt)
   end in
   let e2 = check scn e2 lt in
+  let (e2, _) = insert_unless scn (e2, lt) in
   (App (e1, e2), rt)
 
 | RInst (e, t) ->
@@ -214,7 +217,7 @@ let rec infer (scn : scene) : rexpr -> expr * vtyp = function
   let ret = fresh (mask_of (assume_typ x k `ESolved scn)) "ret" in
   let clos = {knd = k; env = scn.env; bdr = B ret} in
 
-  unify' scn te (VForall (x, clos));
+  unify' scn (VForall (x, clos)) te;
   (Inst (e, t), capp clos (eval scn.env t))
 
 | RLet (rc, x, ps, t, e, rest) ->
@@ -232,6 +235,16 @@ let rec infer (scn : scene) : rexpr -> expr * vtyp = function
 
 | RLit n ->
   (Lit n, VBase (infer_lit n))
+
+(* look ahead to see if the head of the expression is a ctor *)
+and split_head : rexpr -> rexpr * split_arg list = function (* todo: make tail recursive :) *)
+| RApp (e1, e2) ->
+  let e, es = split_head e1 in
+  e, `app e2 :: es
+| RInst (e, t) ->
+  let e, es = split_head e in
+  e, `inst t :: es
+| e -> e, []
 
 and check (scn : scene) (e : rexpr) (t : vtyp) : expr = match e, force t with
 | RSrcRange (rng, e), t -> scn.range <- rng; check scn e t
@@ -252,7 +265,7 @@ and check (scn : scene) (e : rexpr) (t : vtyp) : expr = match e, force t with
 | RTlam (x, None, e), VForall (_, c) ->
   let ret_typ = cinst_at scn.height c in
   let e = check (assume_typ x c.knd `EUnsolved scn) e ret_typ in
-  Tlam (x, c.knd, e)
+  Tlam (x, c.knd, e, `user)
 
 | RLet (rc, x, ps, t, e, rest), t_rest ->
   let (scn, _, e, te) = infer_let scn rc x ps t e in
@@ -291,7 +304,7 @@ and process_params (scn : scene) (ps : rparam list) (ret_typ : rtyp option) : (s
     let k = maybe_rkind x k in
     let scn = assume_typ x k `EUnsolved scn in
     let (mkscn, all_typ, ret_typ, lams) = process_params scn ps ret_typ in
-    ((fun s -> mkscn (assume_typ x k `EUnsolved s)), Forall (x, k, B all_typ), ret_typ, fun e -> Tlam (x, k, lams e))
+    ((fun s -> mkscn (assume_typ x k `EUnsolved s)), Forall (x, k, B all_typ), ret_typ, fun e -> Tlam (x, k, lams e, `user))
 
 (* compute the scene representing a [let]'s inner scope, with all parameters bound.
   also returns the entire binding's type, and just its return type (without parameters)

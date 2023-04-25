@@ -21,7 +21,7 @@ let show_elab_err ({code; scp = _; range = rng} : elab_err) : string =
   string_of_range rng ^ ": " ^ match code with
   | UndefinedVar x -> "undefined variable `" ^ string_of_name x ^ "`"
   | UndefinedQVar x -> "undefined type var " ^ string_of_name x
-  | UnificationFailure (t1, t2) -> "unification failure " ^ t1 ^ " ~/~ " ^ t2
+  | UnificationFailure (t1, t2) -> "unification failure: expected " ^ t1 ^ " but got " ^ t2
   | TooManyArgsInPattern ctor -> "pattern with ctor " ^ string_of_name ctor ^ " has too many arguments"
   | UnexpectedTArgPattern -> "unexpected type argument in pattern"
   | DuplicateCase ctor -> "match clause has duplicate cases for `" ^ string_of_name ctor ^ "`"

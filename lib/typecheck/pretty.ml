@@ -47,7 +47,7 @@ and string_of_pattern (scp : scope) (PCtor (ctor, args)) : string =
 and string_of_expr (scp : scope) (expr : expr) : string =
   let rec go_lam (scp : scope) = function
   | Lam (x, t, e) -> "(" ^ x ^ " : " ^ string_of_type scp t ^ ") " ^ go_lam (Scope.push scp [x]) e
-  | Tlam (x, k, e) -> "{" ^ x ^ " : " ^ string_of_kind k ^ "} " ^ go_lam (Scope.tpush scp [x]) e
+  | Tlam (x, k, e, _) -> "{" ^ x ^ " : " ^ string_of_kind k ^ "} " ^ go_lam (Scope.tpush scp [x]) e
   | e -> ". " ^ go 0 scp e
   and go_branch (scp : scope) (((PCtor (_, args) as pat), bod) : pattern * expr) : string =
     let scp' = List.fold_left (fun scp -> function

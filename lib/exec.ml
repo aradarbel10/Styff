@@ -179,7 +179,7 @@ let compile_prog (mode : [`file | `str]) (opts : options) (input : string) : str
   | ElabFailure err -> throw (show_elab_err err)
 
   | UnsolvedKVar -> throw "ambiguous kind variable"
-  | UnsolvedTVar -> throw "ambiguous type variable"
+  | UnsolvedTVar x -> throw ("ambiguous type variable " ^ x)
 
   | BadCtorReturn -> throw "constructor's type must return the type it's defined in"
 

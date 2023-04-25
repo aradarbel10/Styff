@@ -27,6 +27,7 @@ data T : ∗ where
 | T1 : {A : ∗} → A → (A → int) → T
 (* the type var A here is an existential *)
 
+(* should this break? I'm not sure. *)
 let escapes (t : T) =
   match t with
   | T1 a f . f a

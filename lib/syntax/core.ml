@@ -9,7 +9,7 @@ type expr =
 | Var of idx
 | Ctor of idx * arg list
 | Lam of string * typ * expr
-| Tlam of string * kind * expr
+| Tlam of string * kind * expr * [`user | `inserted] (* annotate with whether it was inserted by the compiler *)
 | App of expr * expr
 | Inst of expr * typ
 | Let of bool * string * typ * expr * expr

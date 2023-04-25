@@ -110,9 +110,9 @@ let rec norm_expr (env : env) (e : expr) : expr =
   | Var i -> Var i
   | Ctor (i, es) -> Ctor (i, List.map (norm_arg env) es)
   | Lam (x, t, e) -> Lam (x, norm env t, norm_expr env e)
-  | Tlam (x, k, e) ->
+  | Tlam (x, k, e, ins) ->
     let v = vqvar (height env) in
-    Tlam (x, k, norm_expr ((`EUnsolved, `EBound, v) :: env) e)
+    Tlam (x, k, norm_expr ((`EUnsolved, `EBound, v) :: env) e, ins)
   | App (e1, e2) -> App (norm_expr env e1, norm_expr env e2)
   | Inst (e, t) -> Inst (norm_expr env e, norm env t)
   | Let (rc, x, t, e, rest) -> Let (rc, x, norm env t, norm_expr env e, norm_expr env rest)
