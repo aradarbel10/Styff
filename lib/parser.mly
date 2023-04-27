@@ -39,13 +39,6 @@ let rec joinTele : string list * annotation -> rparam list = function
 let joinTeles : (string list * annotation) list -> rparam list =
   fun teles -> List.concat @@ List.map joinTele teles
 
-(*
-let single_name (lexbuf : Lexing.lexbuf) : name -> string = function
-| [x] -> x
-| x -> raise (ParseFailure {code = UnexpectedQualified x; range = Lexing.buf_rng lexbuf})
-*)
-
-
 %}
 
 %token EOF
@@ -63,7 +56,7 @@ let single_name (lexbuf : Lexing.lexbuf) : name -> string = function
 %token <string> INFIXL7
 %token <string> INFIX8
 %token <string> INFIXL9
-%token INFER TYPE PRINT POSTULATE DATA SECTION WHERE PIPE MATCH WITH END
+%token INFER TYPE PRINT POSTULATE DATA SECTION OPEN ALIAS WHERE PIPE MATCH WITH END
 %token LAM ARROW LPAREN RPAREN LCURLY RCURLY COLON DOT LET REC EQ IN HOLE
 %token STAR
 
@@ -118,6 +111,8 @@ stmt:
   | POSTULATE; TYPE; x=bnd_name; COLON; k=kind { PostulateType (x, k) }
   | d=data_decl { d }
   | SECTION; x=bnd_name; WHERE; stmts=list(stmt); END { Section (x, stmts) }
+  | OPEN; x=qual_name { OpenSection x }
+  | ALIAS; x=bnd_name; EQ; y=qual_name { Alias (x, y) }
 
 unloc_expr:
   | f=e_atom; es=list(arg) { unfoldApp f es }

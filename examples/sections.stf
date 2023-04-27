@@ -1,22 +1,41 @@
 let a = 5
 
-section l where
-  let b = a
+section A where
+  let b = a (* reference names from the outside *)
 end
 
-let c = l.b
+let c = A.b (* reference qualified names *)
 
-section m where
+(* nested section *)
+section B where
   let d = c
   let e = d
 
-  section n where
+  section C where
     let f = a
   end
   let g = e
+  let h = C.f
 end
 
-let h = c
-let i = m.d
-let j = m.g
-let k = m.n.f
+(* reference nested qualified names *)
+let i = c
+let j = B.d
+let k = B.g
+let l = B.C.f
+
+alias m = A.b (* aliased names *)
+let n = m
+alias D = A (* aliased sections *)
+let o = D.b
+
+open A (* opening sections *)
+let p = b
+
+open B
+let q = e
+let r = C.f (* reference nested sections from opened ones *)
+
+open B.C (* open nested sections *)
+let s = f
+let t = B.h (* can still use the qualified names even after opening *)

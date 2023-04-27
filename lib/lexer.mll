@@ -51,6 +51,8 @@ rule read = parse
   | "print"     { PRINT }
   | "data"      { DATA }
   | "section"   { SECTION }
+  | "open"      { OPEN }
+  | "alias"     { ALIAS }
   | "where"     { WHERE }
   | '|'         { PIPE }
   | "match"     { MATCH }

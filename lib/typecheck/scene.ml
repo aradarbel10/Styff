@@ -2,102 +2,129 @@ open Syntax.Core
 
 module Sectioned = struct
   type entry =
-    | Entry of name
-    | Sect of string * entry list
-  type t = (string * entry list) list
+  | Entry of name * lvl
+  | Sect of trie
+  | Alias of entry (* TODO consider a different solution than just copying the entire thing *)
+  and trie = (string * entry) list
 
-  (* [t] represents an "unfinished" hierarchy of entries. eg
-  ```
-  let a
-  let b
-  section n
-    let c
-    section m
-      let d
-    end
-    let e
-  ```
-  here, the section [n] is not closed yet (there might still be definitions inside it!)
-  so [t] is a list of those partial "layers".
-  when we exit the section, the top layer becomes the contents of the section.
+  let add_entry (x : string) (e : entry) : (string * trie) list -> (string * trie) list = function
+  | [] -> failwith "internal error: can't add entry to empty scopes"
+  | (topsect, top) :: rest -> (topsect, (x, e) :: top) :: rest
+  let rec force_entry : entry -> entry = function
+  | Alias e -> force_entry e
+  | e -> e
 
-  "basically a trie zipper with path-sensitive induction"
-  *)
+  let rec lookup_path (t : trie) : name -> entry option = function
+  | [] -> Some (Sect t)
+  | x :: xs -> match (Option.map force_entry @@ List.assoc_opt x t), xs with
+    | Some (Entry (nm, i)), [] -> Some (Entry (nm, i))
+    | Some (Entry _), _ :: _ -> failwith ""
+    | Some (Sect t), xs -> lookup_path t xs
+    | _ -> None
 
-  (* canonical way to write functions out of [t] *)
-  (* todo better efficiency, somehow allow to escape/break/return mid fold *)
-  let cata (f : 'a -> name -> name -> 'a) (pacc : name * 'a) (t : t) : 'a =
-    let rec go_t (pre, acc : name * 'a) (t : t) : name * 'a =
-      List.fold_left (fun (pre, acc) (s, es) ->
-        match s, pre with
-        | "", _ -> go_sect (pre, [], acc) es
-        | s, (s' :: pre') when s = s' ->
-          let _, acc = go_sect (pre, [], acc) es in
-          pre', acc
-        | _ -> failwith "internal error: sectioned structure isn't synced with prefix"
-          (* todo: is this really an internal error? other causes *)
-        ) (pre, acc) t
-    and go_sect (pre, qua, acc : name * name * 'a) (es : entry list) : name * 'a =
-      match es with
-      | [] -> pre, acc
-      | Entry nm :: es -> go_sect (pre, qua, f acc (pre @ qua @ nm) (qua @ nm)) es
-      | Sect (s, es) :: es' ->
-        let pre, acc = go_sect (pre, qua @ [s], acc) es in
-        go_sect (pre, qua, acc) es'
-    in snd @@ go_t pacc t
+  type t = {
+    names : (string * trie) list; (* TODO: abstract layer to its own type *)
+    height : int;
+    prefix : name;
+  }
 
-  let height (pre : name) (t : t) = cata (fun i _ _ -> i + 1) (pre, 0) t
+  let full_names (t : t) : name list =
+    let rec go_layers (ls : (string * trie) list) : name list =
+      match ls with
+      | [] -> []
+      | (_, trie) :: ls -> List.append (go_trie trie) (go_layers ls)
+    and go_trie (trie : trie) : name list =
+      match trie with
+      | [] -> []
+      | (_, e) :: rest -> List.append (go_entry e) (go_trie rest)
+    and go_entry : entry -> name list = function
+    | Entry (full, _) -> [full]
+    | Sect trie -> go_trie trie
+    | Alias _ -> []
+    in go_layers t.names
 
-  let cata_i (f : 'a -> name -> name -> int -> 'a) (pre, acc : name * 'a) (t : t) : 'a =
-    let f' (a, i) full_nm qual_nm = (f a full_nm qual_nm i, i + 1) in
-    let pacc = (pre, (acc, 0)) in
-    fst @@ cata f' pacc t
+  let visible_names (t : t) : name list =
+    let rec go_layers (ls : (string * trie) list) : name list =
+      match ls with
+      | [] -> []
+      | (_, trie) :: ls -> List.append (go_trie [] trie) (go_layers ls)
+    and go_trie (pre : name) (trie : trie) : name list =
+      match trie with
+      | [] -> []
+      | (x, e) :: rest -> List.append (go_entry (pre @ [x]) e) (go_trie pre rest)
+    and go_entry (pre : name) (e : entry) : name list =
+      match e with
+      | Entry _ -> [pre]
+      | Sect trie -> go_trie pre trie
+      | Alias e -> go_entry pre e
+    in go_layers t.names
 
-  let push (scd : t) (ent : entry) : t =
-    match scd with
-    | (s, es) :: es' -> (s, ent :: es) :: es'
-    | [] -> failwith "absurd! can't have zero layers in scope"
-  let enter (sect : string) (scd : t) : t = (sect, []) :: scd
-  let exit (scd : t) : t =
-    match scd with
-    | (s, es) :: es' -> push es' (Sect (s, es))
-    | [] -> failwith "absurd! can't exit layer when there's no layers"
-
-  let ith (t : t) (pre : name) (Idx i : idx) : name option =
-    cata_i (
-      fun acc full_nm _ i' -> if i = i' then Some full_nm else acc
-    ) (pre, None) t
-
-  let lookup (t : t) (pre : name) (nm : name) : idx option =
-    let i = cata_i (function
-    | None -> fun _ qual_nm i ->
-      if nm = qual_nm then Some i else None
-    | Some i -> fun _ _ _ -> Some i
-    ) (pre, None) t
-    in match i with
-    | None -> None
-    | Some i -> Some (Idx i)
+  let empty = {names = ["", []]; height = 0; prefix = []}
+  let push {names; height; prefix} x = {
+    names = add_entry x (Entry (List.rev (x :: prefix), Lvl height)) names;
+    height = height + 1;
+    prefix = prefix;
+  }
+  let lookup_entry (t : t) (x : name) : entry option =
+    List.fold_left (fun found (_, top) -> match found with
+    | Some _ -> found
+    | None -> lookup_path top x
+    ) None t.names
+  let lookup {names; height; _} x =
+    List.fold_left (fun found (_, top) -> match found with
+    | Some _ -> found
+    | None -> match lookup_path top x with
+      | Some (Entry (full, lvl)) -> Some (full, lvl2idx (Lvl height) lvl)
+      | _ -> None
+    ) None names
+  let at_idx t (Idx i) = List.nth (full_names t) i (* TODO: super inefficient, probably memoize this in a dedicated field *)
+  let enter sect {names; height; prefix} = { (* TODO: change order of parameters for consistency *)
+    names = (sect, []) :: names;
+    height = height;
+    prefix = sect :: prefix;
+  }
+  let exit {names; height; prefix} =
+    match names with
+    | (topsect, top) :: rest -> {
+      names = add_entry topsect (Sect top) rest;
+      height = height;
+      prefix = List.tl prefix;
+    }
+    | _ -> failwith "internal error: can't exit a section when not inside any section"
+  let alias (t : t) (new_nm : string) (old_nm : name) : t =
+    match lookup_entry t old_nm with
+    | Some e -> {t with names = add_entry new_nm (Alias e) t.names}
+    | None -> failwith "can't alias a nonexistent name"
+  let open_section (t : t) (sect : name) : t =
+    match lookup_entry t sect with
+    | Some (Sect es) ->
+      let add_alias names (x, e) = add_entry x (Alias e) names in
+      let names' = List.fold_left add_alias t.names es in
+      {t with names = names'}
+    | _ -> failwith "can't open an undefined section/name which doesn't refer to a section"
+      (* TODO turn into a proper compilation error *)
+    
 end
 
-type scope = {nms : Sectioned.t; tps : Sectioned.t; prefix : name}
+type scope = {nms : Sectioned.t; tps : Sectioned.t}
 module Scope = struct
-  let push (scp : scope) (nm : name) : scope = {scp with nms = Sectioned.push scp.nms (Entry nm)}
-  let tpush (scp : scope) (nm : name) : scope = {scp with tps = Sectioned.push scp.tps (Entry nm)}
-  let enter (scp : scope) (sect : string) : scope =
-    {
-      nms = Sectioned.enter sect scp.nms;
-      tps = Sectioned.enter sect scp.tps;
-      prefix = sect :: scp.prefix;
-    }
-  let exit (scp : scope) : scope =
-    {
-      nms = Sectioned.exit scp.nms;
-      tps = Sectioned.exit scp.tps;
-      prefix = List.tl scp.prefix;
-    }
+  let push (scp : scope) (nm : string) : scope = {scp with nms = Sectioned.push scp.nms nm}
+  let tpush (scp : scope) (nm : string) : scope = {scp with tps = Sectioned.push scp.tps nm}
+  let enter (scp : scope) (sect : string) : scope = {
+    nms = Sectioned.enter sect scp.nms;
+    tps = Sectioned.enter sect scp.tps;
+  }
+  let exit (scp : scope) : scope = {
+    nms = Sectioned.exit scp.nms;
+    tps = Sectioned.exit scp.tps;
+  }
 
-  let ith (scp : scope) (i : idx) : name = Option.get @@ Sectioned.ith scp.nms scp.prefix i
-  let ith_type (scp : scope) (i : idx) : name = Option.get @@ Sectioned.ith scp.tps scp.prefix i
+  let ith (scp : scope) (i : idx) : name = Sectioned.at_idx scp.nms i
+  let ith_type (scp : scope) (i : idx) : name = Sectioned.at_idx scp.tps i
+  let open_section (scp : scope) (sect : name) : scope = {
+    nms = Sectioned.open_section scp.nms sect;
+    tps = Sectioned.open_section scp.tps sect;
+  }
 end
 
 (* all typechecking occurs inside a [scene]:
@@ -132,7 +159,7 @@ type scene = {
   mutable range : src_range;
 }
 
-let empty_scope : scope = {nms = ["", []]; tps = ["", []]; prefix = []}
+let empty_scope : scope = {nms = Sectioned.empty; tps = Sectioned.empty}
 let empty_scene : scene = {
   ctx = [];
   ctors = [];
@@ -148,7 +175,7 @@ let empty_scene : scene = {
 let assume (x : string) (t : vtyp) (scn : scene) : scene =
   {scn with
     ctx = t :: scn.ctx;
-    scope = Scope.push scn.scope [x];
+    scope = Scope.push scn.scope x;
   }
 
 let assume_typ (x : string) (k : kind) (fixed : [`ESolved | `EUnsolved]) (scn : scene) : scene =
@@ -156,7 +183,7 @@ let assume_typ (x : string) (k : kind) (fixed : [`ESolved | `EUnsolved]) (scn : 
     height = inc scn.height;
     tctx = k :: scn.tctx;
     env = (fixed, `EBound, vqvar scn.height) :: scn.env;
-    scope = Scope.tpush scn.scope [x];
+    scope = Scope.tpush scn.scope x;
   }
 
 let define_typ (x : string) (t : vtyp) (k : kind) (scn : scene) : scene =
@@ -164,7 +191,7 @@ let define_typ (x : string) (t : vtyp) (k : kind) (scn : scene) : scene =
     height = inc scn.height;
     tctx = k :: scn.tctx;
     env = (`ESolved, `EDefed, t) :: scn.env;
-    scope = Scope.tpush scn.scope [x]
+    scope = Scope.tpush scn.scope x
   }
 
 let mask_of (scn : scene) : mask =
@@ -172,29 +199,29 @@ let mask_of (scn : scene) : mask =
 
 let define_ctor_params (ctor : string) (params : vparam list) (scn : scene) : scene =
   {scn with
-    ctor_params = (ctor :: scn.scope.prefix, params) :: scn.ctor_params
+    ctor_params = (List.rev (ctor :: scn.scope.nms.prefix), params) :: scn.ctor_params
   }
 
 let define_ctors (x : string) (ctors : string list) (scn : scene) : scene =
-  let x = x :: scn.scope.prefix in
-  let ctors = List.map (fun c -> c :: scn.scope.prefix) ctors in
+  let x = List.rev (x :: scn.scope.tps.prefix) in
+  let ctors = List.map (fun c -> List.rev (c :: scn.scope.nms.prefix)) ctors in
   {scn with
     ctors = (x, ctors) :: scn.ctors;
     parents = List.map (fun c -> (c, x)) ctors @ scn.parents
   }
 
 let lookup (nm : name) (scn : scene) : (idx * vtyp) option =
-  match Sectioned.lookup scn.scope.nms scn.scope.prefix nm with
+  match Sectioned.lookup scn.scope.nms nm with
   | None -> None
-  | Some (Idx i) ->
+  | Some (_, Idx i) ->
     let t = List.nth scn.ctx i in
     Some (Idx i, t)
 
 let lookup_type (nm : name) (scn : scene) : (idx * kind) option =
-  match Sectioned.lookup scn.scope.tps scn.scope.prefix nm with
+  match Sectioned.lookup scn.scope.tps nm with
   | None -> None
-  | Some (Idx i) ->
+  | Some (_, Idx i) ->
     let k = List.nth scn.tctx i in
     Some (Idx i, k)
 
-let qualify (scn : scene) (x : string) : name = List.rev scn.scope.prefix @ [x]
+let qualify (scn : scene) (x : string) : name = List.rev (x :: scn.scope.nms.prefix)

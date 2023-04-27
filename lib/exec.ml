@@ -80,7 +80,6 @@ let rec elab_stmt (opts : options) (scn : scene) (stmt : R.stmt) : scene * C.pro
 
   | Print e ->
     let (e, _) = infer scn e in
-    (* let e = zonk_expr scn.scope e in *)
     let e = norm_expr scn.env e in
     scn, [C.Print e]
 
@@ -115,6 +114,12 @@ let rec elab_stmt (opts : options) (scn : scene) (stmt : R.stmt) : scene * C.pro
     let scn = {scn with scope = Scope.exit scn.scope} in
 
     scn, stmts'
+
+  | OpenSection sect ->
+    {scn with scope = Scope.open_section scn.scope sect}, []
+
+  | Alias (new_nm, old_nm) ->
+    {scn with scope = {scn.scope with nms = Sectioned.alias scn.scope.nms new_nm old_nm}}, []
 
 let builtins_prog : R.prog = [
   Section ("builtin", [

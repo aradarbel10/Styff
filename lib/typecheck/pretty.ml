@@ -31,13 +31,13 @@ let rec string_of_type (scp : scope) (t : typ) : string =
     | _ -> parens (p > 2) @@ go 2 scp t1 ^ " " ^ go 3 scp t2
     end
   | TLet (x, k, t, rest) -> parens (p > 0) @@ "let type " ^ x ^ " : " ^ string_of_kind k
-    ^ " = " ^ go 0 scp t ^ " in " ^ go 0 (Scope.tpush scp [x]) rest
-  | TAbs (x, k, B t) -> parens (p > 0) @@ "λ(" ^ x ^ " : " ^ string_of_kind k ^ "). " ^ go 0 (Scope.tpush scp [x]) t
-  | Forall (x, k, B t) -> parens (p > 0) @@ "{" ^ x ^ " : " ^ string_of_kind k ^ "} → " ^ go 0 (Scope.tpush scp [x]) t
+    ^ " = " ^ go 0 scp t ^ " in " ^ go 0 (Scope.tpush scp x) rest
+  | TAbs (x, k, B t) -> parens (p > 0) @@ "λ(" ^ x ^ " : " ^ string_of_kind k ^ "). " ^ go 0 (Scope.tpush scp x) t
+  | Forall (x, k, B t) -> parens (p > 0) @@ "{" ^ x ^ " : " ^ string_of_kind k ^ "} → " ^ go 0 (Scope.tpush scp x) t
   | Base b -> string_of_base b
   in go 0 scp t
 and string_of_vtype (scp : scope) (t : vtyp) : string =
-  let t = quote (Lvl (Sectioned.height scp.prefix scp.tps)) t in
+  let t = quote (Lvl scp.tps.height) t in
   string_of_type scp t
 
 and string_of_pattern (scp : scope) (PCtor (ctor, args)) : string =
@@ -46,13 +46,13 @@ and string_of_pattern (scp : scope) (PCtor (ctor, args)) : string =
   string_of_name (Scope.ith scp ctor) ^ " " ^ str
 and string_of_expr (scp : scope) (expr : expr) : string =
   let rec go_lam (scp : scope) = function
-  | Lam (x, t, e) -> "(" ^ x ^ " : " ^ string_of_type scp t ^ ") " ^ go_lam (Scope.push scp [x]) e
-  | Tlam (x, k, e, _) -> "{" ^ x ^ " : " ^ string_of_kind k ^ "} " ^ go_lam (Scope.tpush scp [x]) e
+  | Lam (x, t, e) -> "(" ^ x ^ " : " ^ string_of_type scp t ^ ") " ^ go_lam (Scope.push scp x) e
+  | Tlam (x, k, e, _) -> "{" ^ x ^ " : " ^ string_of_kind k ^ "} " ^ go_lam (Scope.tpush scp x) e
   | e -> ". " ^ go 0 scp e
   and go_branch (scp : scope) (((PCtor (_, args) as pat), bod) : pattern * expr) : string =
     let scp' = List.fold_left (fun scp -> function
-      | PVar  v -> Scope.push scp [v]
-      | PTvar v -> Scope.tpush scp [v]) scp args in
+      | PVar  v -> Scope.push scp v
+      | PTvar v -> Scope.tpush scp v) scp args in
     string_of_pattern scp pat ^ " . " ^ go 0 scp' bod
   and go_arg (scp : scope) : arg -> string = function
   | `TmArg e -> go 0 scp e
@@ -66,7 +66,7 @@ and string_of_expr (scp : scope) (expr : expr) : string =
   | Inst (e, t) -> parens (p > 2) @@ go 2 scp e ^ " {" ^ string_of_type scp t ^ "}"
   | Let (rc, x, t, e, rest) ->
     parens (p > 0) @@ "let " ^ x ^ " : " ^ string_of_type scp t
-    ^ " = " ^ go 0 (if rc then Scope.push scp [x] else scp) e ^ " in " ^ go 0 (Scope.push scp [x]) rest
+    ^ " = " ^ go 0 (if rc then Scope.push scp x else scp) e ^ " in " ^ go 0 (Scope.push scp x) rest
   | Match (s, bs) ->
     parens (p > 0) @@ "match " ^ go 0 scp s ^ " with { " ^
     String.concat " | " (List.map (go_branch scp) bs)
