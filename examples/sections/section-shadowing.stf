@@ -1,0 +1,24 @@
+section A where
+  let a = 42
+end
+
+section A where
+  let b = 73
+end
+
+section B where
+  let c = 101
+end
+alias A = B
+
+section D where
+  section A where
+    let d = 36
+  end
+end
+open D
+
+print A.a
+print A.b
+print A.c
+print A.d

@@ -13,14 +13,26 @@ module Sectioned = struct
   let rec force_entry : entry -> entry = function
   | Alias e -> force_entry e
   | e -> e
-
-  let rec lookup_path (t : trie) : name -> entry option = function
-  | [] -> Some (Sect t)
-  | x :: xs -> match (Option.map force_entry @@ List.assoc_opt x t), xs with
-    | Some (Entry (nm, i)), [] -> Some (Entry (nm, i))
-    | Some (Entry _), _ :: _ -> failwith ""
-    | Some (Sect t), xs -> lookup_path t xs
-    | _ -> None
+  
+  (* backtracking search to find the trie branch fitting the given path *)
+  let lookup_path =
+    let rec go_trie (t : trie) (nm : name) : entry option =
+      match t, nm with
+      | [], _ -> None
+      | (_, e)::_, [] -> Some e
+      | (x', e)::rest, x::xs ->
+        if x = x'
+          then begin match go_entry e xs with
+          | Some e -> Some e
+          | None -> go_trie rest (x::xs)
+          end
+          else go_trie rest (x::xs)
+    and go_entry (e : entry) (nm : name) : entry option =
+      match force_entry e, nm with
+      | e, [] -> Some e
+      | Sect t, nm -> go_trie t nm
+      | _ -> None
+    in go_trie
 
   type t = {
     names : (string * trie) list; (* TODO: abstract layer to its own type *)
