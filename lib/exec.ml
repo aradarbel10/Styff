@@ -18,7 +18,19 @@ open Backend.Js
 type options = {
   elab_diagnostics : bool;
   dump_output : bool;
+  dump_visibles : bool;
 }
+let debug_opts : options = {
+  elab_diagnostics = true;
+  dump_output = true;
+  dump_visibles = true;
+}
+
+
+let print_visibles (scn : scene) =
+  print_endline (
+    "visible names: " ^ string_of_names (Sectioned.visible_names scn.scope.nms) ^ "\n" ^
+    "visible types: " ^ string_of_names (Sectioned.visible_names scn.scope.tps) ^ "\n")
 
 (*
 elaborate given stmt under given scene, with [scp] to accumulate the qualified scope.
@@ -43,10 +55,9 @@ let rec elab_stmt (opts : options) (scn : scene) (stmt : R.stmt) : scene * C.pro
       print_endline ("let " ^ string_of_name x ^ "\n\t : " ^
         string_of_vtype bod_scn.scope typ ^ "\n\t = " ^
         string_of_expr bod_scn.scope bod);
+    if opts.dump_visibles then print_visibles scn;
 
-    (* zonk everything
-    let ztyp = zonk_type bod_scn.scope (quote bod_scn.height typ) in
-    let zbod = zonk_expr bod_scn.scope bod in *)
+    (* zonk everything *)
     let typ = quote bod_scn.height typ in
 
     let stmt = C.Def (rc, x, typ, bod) in
@@ -61,6 +72,7 @@ let rec elab_stmt (opts : options) (scn : scene) (stmt : R.stmt) : scene * C.pro
       print_endline ("type " ^ string_of_name x ^ "\n\t : " ^
         string_of_kind k ^ "\n\t = " ^
         string_of_type scn.scope t);
+    if opts.dump_visibles then print_visibles scn;
 
     scn', [TDef (x, k, t)]
 
@@ -86,16 +98,23 @@ let rec elab_stmt (opts : options) (scn : scene) (stmt : R.stmt) : scene * C.pro
   | Postulate (x, t) ->
     let (t, _) = kind_of scn t in
     let vt = eval scn.env t in
+
+    if opts.dump_visibles then print_visibles scn;
+
     assume x vt scn, [Postulate (qualify scn x, t)]
 
   | PostulateType (x, k) ->
     let k = lower_kind k in
+
+    if opts.dump_visibles then print_visibles scn;
+
     assume_typ x k `ESolved scn, [PostulateType (qualify scn x, k)]
 
   | DataDecl (x, k, ctors) ->
     let scn, k, ctors = declare_data scn x k ctors in
     if opts.elab_diagnostics then
       print_endline ("declared data " ^ x);
+    if opts.dump_visibles then print_visibles scn;
 
     scn, [DataDecl (qualify scn x, k, List.map (qualify scn) ctors)]
 
@@ -116,10 +135,14 @@ let rec elab_stmt (opts : options) (scn : scene) (stmt : R.stmt) : scene * C.pro
     scn, stmts'
 
   | OpenSection sect ->
-    {scn with scope = Scope.open_section scn.scope sect}, []
+    let scn = {scn with scope = Scope.open_section scn.scope sect} in
+    if opts.dump_visibles then print_visibles scn;
+    scn, []
 
   | Alias (new_nm, old_nm) ->
-    {scn with scope = {scn.scope with nms = Sectioned.alias scn.scope.nms new_nm old_nm}}, []
+    let scn = {scn with scope = {scn.scope with nms = Sectioned.alias scn.scope.nms new_nm old_nm}} in
+    if opts.dump_visibles then print_visibles scn;
+    scn, []
 
 let builtins_prog : R.prog = [
   Section ("builtin", [
@@ -142,6 +165,7 @@ let elab_prog (opts : options) (prog : R.prog) : C.prog =
   let _, stmts' = List.fold_left go_stmt (empty_scene, []) preambled in
   stmts'
 
+(* TODO move to the right file smh *)
 let zonk_name (nm : name) : string = String.concat "_" (sanitize nm)
 let zonk_ctor (scp : zonk_scope) (ctor : name) : zonk_scope
   = {scp with nms = string_of_name ctor :: scp.nms}

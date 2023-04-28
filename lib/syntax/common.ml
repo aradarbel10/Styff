@@ -50,6 +50,8 @@ let parens (b : bool) (s : string) : string =
 let symbols = ['!'; '@'; '#'; '$'; '%'; '^'; '&'; '*'; '-'; '+'; ';'; '?'; '/'; '<'; '>'; ','; '~'; '='; '.'; ':'; '|']
 let string_of_name (nm : name) : string =
   String.concat "." (List.map (fun s -> parens (List.mem s.[0] symbols) s) nm)
+let string_of_names (nms : name list) : string =
+  String.concat ";" (List.map string_of_name (List.rev nms))
 
 (* for error reporting *)
 type src_range = Lexing.position * Lexing.position

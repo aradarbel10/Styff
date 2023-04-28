@@ -208,15 +208,17 @@ let define_typ (x : string) (t : vtyp) (k : kind) (scn : scene) : scene =
 
 let mask_of (scn : scene) : mask =
   List.map (fun (_, bound, _) -> bound) scn.env
+let qualify (scn : scene) (x : string) : name = List.rev (x :: scn.scope.nms.prefix)
+
 
 let define_ctor_params (ctor : string) (params : vparam list) (scn : scene) : scene =
   {scn with
-    ctor_params = (List.rev (ctor :: scn.scope.nms.prefix), params) :: scn.ctor_params
+    ctor_params = (qualify scn ctor, params) :: scn.ctor_params
   }
 
 let define_ctors (x : string) (ctors : string list) (scn : scene) : scene =
-  let x = List.rev (x :: scn.scope.tps.prefix) in
-  let ctors = List.map (fun c -> List.rev (c :: scn.scope.nms.prefix)) ctors in
+  let x = qualify scn x in
+  let ctors = List.map (qualify scn) ctors in
   {scn with
     ctors = (x, ctors) :: scn.ctors;
     parents = List.map (fun c -> (c, x)) ctors @ scn.parents
@@ -235,5 +237,3 @@ let lookup_type (nm : name) (scn : scene) : (idx * kind) option =
   | Some (_, Idx i) ->
     let k = List.nth scn.tctx i in
     Some (Idx i, k)
-
-let qualify (scn : scene) (x : string) : name = List.rev (x :: scn.scope.nms.prefix)
