@@ -20,7 +20,7 @@ let local_unify (t : vtyp) (t' : vtyp) (scn : scene) : scene =
 - the type of the pattern (return-type of the constructor)
 *)
 let infer_pattern (scn : scene) (RPCtor (ctor, args) : rpattern) : scene * pattern * vtyp =
-  match lookup ctor scn with
+  match lookup_term ctor scn with
   | None -> failwith "absurd!" (* ctors will be verified before going into branches *)
   | Some (i, typ_all) ->
     let rec go (scn, acc : scene * pat_arg list) (args : pat_arg list) (typ : vtyp) : scene * pat_arg list * vtyp =

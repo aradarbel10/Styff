@@ -47,3 +47,6 @@ let take_or_less (n : int) (xs : 'a list) : 'a list * int option =
 
 let diff (xs : 'a list) (ys : 'a list) : 'a list =
   List.filter (fun x -> not (List.mem x ys)) xs
+
+let append2 (xs, ys : 'a list * 'b list) (xs', ys' : 'a list * 'b list) : 'a list * 'b list =
+  List.append xs xs', List.append ys ys'

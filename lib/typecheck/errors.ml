@@ -1,6 +1,8 @@
 open Scene
 open Syntax.Common
 
+let quoted (nm : name) : string = "`" ^ string_of_name nm ^ "`"
+
 type elab_code =
 | UndefinedVar of name
 | UndefinedQVar of name
@@ -14,21 +16,21 @@ type elab_code =
 | UnrelatedCase of name
 type elab_err = {
   code : elab_code;
-  scp : scope;
+  scp : Scope.t;
   range : src_range;
 }
 let show_elab_err ({code; scp = _; range = rng} : elab_err) : string =
   string_of_range rng ^ ": " ^ match code with
-  | UndefinedVar x -> "undefined variable `" ^ string_of_name x ^ "`"
-  | UndefinedQVar x -> "undefined type var " ^ string_of_name x
+  | UndefinedVar x -> "undefined variable " ^ quoted x
+  | UndefinedQVar x -> "undefined type var " ^ quoted x
   | UnificationFailure (t1, t2) -> "unification failure: expected " ^ t1 ^ " but got " ^ t2
-  | TooManyArgsInPattern ctor -> "pattern with ctor " ^ string_of_name ctor ^ " has too many arguments"
+  | TooManyArgsInPattern ctor -> "pattern with ctor " ^ quoted ctor ^ " has too many arguments"
   | UnexpectedTArgPattern -> "unexpected type argument in pattern"
-  | DuplicateCase ctor -> "match clause has duplicate cases for `" ^ string_of_name ctor ^ "`"
-  | UnrelatedCase ctor -> "match clause has an unrelated constructor `" ^ string_of_name ctor  ^ "`"
+  | DuplicateCase ctor -> "match clause has duplicate cases for `" ^ quoted ctor ^ "`"
+  | UnrelatedCase ctor -> "match clause has an unrelated constructor `" ^ quoted ctor  ^ "`"
   | MissingCases ctors ->
     let ctors, rest = Util.take_or_less 3 ctors in
-    let ctors = List.map (fun ctor -> "`" ^ string_of_name ctor ^ "`") ctors in
+    let ctors = List.map quoted ctors in
     "match clause is missing a case for: " ^ String.concat ", " ctors
     ^ match rest with
     | None -> "."

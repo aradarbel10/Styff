@@ -1,13 +1,15 @@
 open Syntax.Core
 
-module Sectioned = struct
+module Scope = struct
   type entry =
-  | Entry of name * lvl
+  | TermEntry of name * lvl (* TODO: still need to keep full names here? *)
+  | TypeEntry of name * lvl
   | Sect of trie
-  | Alias of entry (* TODO consider a different solution than just copying the entire thing *)
+  | Alias of entry
   and trie = (string * entry) list
+  type layer = (string * trie) list
 
-  let add_entry (x : string) (e : entry) : (string * trie) list -> (string * trie) list = function
+  let add_entry (x : string) (e : entry) : layer -> layer = function
   | [] -> failwith "internal error: can't add entry to empty scopes"
   | (topsect, top) :: rest -> (topsect, (x, e) :: top) :: rest
   let rec force_entry : entry -> entry = function
@@ -35,78 +37,92 @@ module Sectioned = struct
     in go_trie
 
   type t = {
-    names : (string * trie) list; (* TODO: abstract layer to its own type *)
-    height : int;
+    names : layer;
     prefix : name;
+    term_height : int;
+    type_height : int;
+    term_scope : name list;
+    type_scope : name list; (* TODO: abstract over syntactic classes *)
   }
 
-  let full_names (t : t) : name list =
-    let rec go_layers (ls : (string * trie) list) : name list =
+  let visible_names (t : t) : name list * name list =
+    let rec go_layers (ls : (string * trie) list) : name list * name list =
       match ls with
-      | [] -> []
-      | (_, trie) :: ls -> List.append (go_trie trie) (go_layers ls)
-    and go_trie (trie : trie) : name list =
+      | [] -> [], []
+      | (_, trie) :: ls -> Util.append2 (go_trie [] trie) (go_layers ls)
+    and go_trie (pre : name) (trie : trie) : name list * name list =
       match trie with
-      | [] -> []
-      | (_, e) :: rest -> List.append (go_entry e) (go_trie rest)
-    and go_entry : entry -> name list = function
-    | Entry (full, _) -> [full]
-    | Sect trie -> go_trie trie
-    | Alias _ -> []
-    in go_layers t.names
-
-  let visible_names (t : t) : name list =
-    let rec go_layers (ls : (string * trie) list) : name list =
-      match ls with
-      | [] -> []
-      | (_, trie) :: ls -> List.append (go_trie [] trie) (go_layers ls)
-    and go_trie (pre : name) (trie : trie) : name list =
-      match trie with
-      | [] -> []
-      | (x, e) :: rest -> List.append (go_entry (pre @ [x]) e) (go_trie pre rest)
-    and go_entry (pre : name) (e : entry) : name list =
+      | [] -> [], []
+      | (x, e) :: rest -> Util.append2 (go_entry (pre @ [x]) e) (go_trie pre rest)
+    and go_entry (pre : name) (e : entry) : name list * name list =
       match e with
-      | Entry _ -> [pre]
+      | TermEntry _ -> [pre], []
+      | TypeEntry _ -> [], [pre]
       | Sect trie -> go_trie pre trie
       | Alias e -> go_entry pre e
     in go_layers t.names
 
-  let empty = {names = ["", []]; height = 0; prefix = []}
-  let push {names; height; prefix} x = {
-    names = add_entry x (Entry (List.rev (x :: prefix), Lvl height)) names;
-    height = height + 1;
+  let empty = {
+    names = ["", []];
+    prefix = [];
+    term_height = 0;
+    type_height = 0;
+    term_scope = [];
+    type_scope = [];
+  }
+  let push_term {names; prefix; term_height; type_height; term_scope; type_scope} x = {
+    names = add_entry x (TermEntry (List.rev (x :: prefix), Lvl term_height)) names;
     prefix = prefix;
+    term_height = term_height + 1;
+    type_height = type_height;
+    term_scope = (List.rev (x :: prefix)) :: term_scope;
+    type_scope = type_scope;
+  }
+  let push_type {names; prefix; term_height; type_height; term_scope; type_scope} x = {
+    names = add_entry x (TypeEntry (List.rev (x :: prefix), Lvl type_height)) names;
+    prefix = prefix;
+    term_height = term_height;
+    type_height = type_height + 1;
+    term_scope = term_scope;
+    type_scope = type_scope;
   }
   let lookup_entry (t : t) (x : name) : entry option =
     List.fold_left (fun found (_, top) -> match found with
     | Some _ -> found
     | None -> lookup_path top x
     ) None t.names
-  let lookup {names; height; _} x =
+  let lookup_term {names; term_height; _} x : (name * idx) option =
     List.fold_left (fun found (_, top) -> match found with
     | Some _ -> found
     | None -> match lookup_path top x with
-      | Some (Entry (full, lvl)) -> Some (full, lvl2idx (Lvl height) lvl)
+      | Some (TermEntry (full, lvl)) -> Some (full, lvl2idx (Lvl term_height) lvl)
       | _ -> None
     ) None names
-  let at_idx t (Idx i) = List.nth (full_names t) i (* TODO: super inefficient, probably memoize this in a dedicated field *)
-  let enter sect {names; height; prefix} = { (* TODO: change order of parameters for consistency *)
-    names = (sect, []) :: names;
-    height = height;
-    prefix = sect :: prefix;
+  let lookup_type {names; type_height; _} x : (name * idx) option =
+    List.fold_left (fun found (_, top) -> match found with
+    | Some _ -> found
+    | None -> match lookup_path top x with
+      | Some (TypeEntry (full, lvl)) -> Some (full, lvl2idx (Lvl type_height) lvl)
+      | _ -> None
+    ) None names
+  let ith_term t (Idx i) = List.nth t.term_scope i
+  let ith_type t (Idx i) = List.nth t.type_scope i
+  let enter t sect = {t with
+    names = (sect, []) :: t.names;
+    prefix = sect :: t.prefix;
   }
-  let exit {names; height; prefix} =
-    match names with
-    | (topsect, top) :: rest -> {
+  let exit t =
+    match t.names with
+    | (topsect, top) :: rest -> {t with
       names = add_entry topsect (Sect top) rest;
-      height = height;
-      prefix = List.tl prefix;
+      prefix = List.tl t.prefix;
     }
     | _ -> failwith "internal error: can't exit a section when not inside any section"
   let alias (t : t) (new_nm : string) (old_nm : name) : t =
     match lookup_entry t old_nm with
     | Some e -> {t with names = add_entry new_nm (Alias e) t.names}
     | None -> failwith "can't alias a nonexistent name"
+      (* TODO turn into a proper compilation error *)
   let open_section (t : t) (sect : name) : t =
     match lookup_entry t sect with
     | Some (Sect es) ->
@@ -116,27 +132,6 @@ module Sectioned = struct
     | _ -> failwith "can't open an undefined section/name which doesn't refer to a section"
       (* TODO turn into a proper compilation error *)
     
-end
-
-type scope = {nms : Sectioned.t; tps : Sectioned.t}
-module Scope = struct
-  let push (scp : scope) (nm : string) : scope = {scp with nms = Sectioned.push scp.nms nm}
-  let tpush (scp : scope) (nm : string) : scope = {scp with tps = Sectioned.push scp.tps nm}
-  let enter (scp : scope) (sect : string) : scope = {
-    nms = Sectioned.enter sect scp.nms;
-    tps = Sectioned.enter sect scp.tps;
-  }
-  let exit (scp : scope) : scope = {
-    nms = Sectioned.exit scp.nms;
-    tps = Sectioned.exit scp.tps;
-  }
-
-  let ith (scp : scope) (i : idx) : name = Sectioned.at_idx scp.nms i
-  let ith_type (scp : scope) (i : idx) : name = Sectioned.at_idx scp.tps i
-  let open_section (scp : scope) (sect : name) : scope = {
-    nms = Sectioned.open_section scp.nms sect;
-    tps = Sectioned.open_section scp.tps sect;
-  }
 end
 
 (* all typechecking occurs inside a [scene]:
@@ -167,11 +162,10 @@ type scene = {
   tctx : tctx;
   env : env;
 
-  scope : scope;
+  scope : Scope.t;
   mutable range : src_range;
 }
 
-let empty_scope : scope = {nms = Sectioned.empty; tps = Sectioned.empty}
 let empty_scene : scene = {
   ctx = [];
   ctors = [];
@@ -180,14 +174,14 @@ let empty_scene : scene = {
   height = Lvl 0;
   tctx = [];
   env = [];
-  scope = empty_scope;
+  scope = Scope.empty;
   range = dummy_range;
 }
 
 let assume (x : string) (t : vtyp) (scn : scene) : scene =
   {scn with
     ctx = t :: scn.ctx;
-    scope = Scope.push scn.scope x;
+    scope = Scope.push_term scn.scope x;
   }
 
 let assume_typ (x : string) (k : kind) (fixed : [`ESolved | `EUnsolved]) (scn : scene) : scene =
@@ -195,7 +189,7 @@ let assume_typ (x : string) (k : kind) (fixed : [`ESolved | `EUnsolved]) (scn : 
     height = inc scn.height;
     tctx = k :: scn.tctx;
     env = (fixed, `EBound, vqvar scn.height) :: scn.env;
-    scope = Scope.tpush scn.scope x;
+    scope = Scope.push_type scn.scope x;
   }
 
 let define_typ (x : string) (t : vtyp) (k : kind) (scn : scene) : scene =
@@ -203,12 +197,12 @@ let define_typ (x : string) (t : vtyp) (k : kind) (scn : scene) : scene =
     height = inc scn.height;
     tctx = k :: scn.tctx;
     env = (`ESolved, `EDefed, t) :: scn.env;
-    scope = Scope.tpush scn.scope x
+    scope = Scope.push_term scn.scope x
   }
 
 let mask_of (scn : scene) : mask =
   List.map (fun (_, bound, _) -> bound) scn.env
-let qualify (scn : scene) (x : string) : name = List.rev (x :: scn.scope.nms.prefix)
+let qualify (scn : scene) (x : string) : name = List.rev (x :: scn.scope.prefix)
 
 
 let define_ctor_params (ctor : string) (params : vparam list) (scn : scene) : scene =
@@ -224,15 +218,15 @@ let define_ctors (x : string) (ctors : string list) (scn : scene) : scene =
     parents = List.map (fun c -> (c, x)) ctors @ scn.parents
   }
 
-let lookup (nm : name) (scn : scene) : (idx * vtyp) option =
-  match Sectioned.lookup scn.scope.nms nm with
+let lookup_term (nm : name) (scn : scene) : (idx * vtyp) option =
+  match Scope.lookup_term scn.scope nm with
   | None -> None
   | Some (_, Idx i) ->
     let t = List.nth scn.ctx i in
     Some (Idx i, t)
 
 let lookup_type (nm : name) (scn : scene) : (idx * kind) option =
-  match Sectioned.lookup scn.scope.tps nm with
+  match Scope.lookup_type scn.scope nm with
   | None -> None
   | Some (_, Idx i) ->
     let k = List.nth scn.tctx i in

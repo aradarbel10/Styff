@@ -28,9 +28,10 @@ let debug_opts : options = {
 
 
 let print_visibles (scn : scene) =
+  let nms, tps = Scope.visible_names scn.scope in
   print_endline (
-    "visible names: " ^ string_of_names (Sectioned.visible_names scn.scope.nms) ^ "\n" ^
-    "visible types: " ^ string_of_names (Sectioned.visible_names scn.scope.tps) ^ "\n")
+    "visible names: " ^ string_of_names nms ^ "\n" ^
+    "visible types: " ^ string_of_names tps ^ "\n")
 
 (*
 elaborate given stmt under given scene, with [scp] to accumulate the qualified scope.
@@ -140,7 +141,7 @@ let rec elab_stmt (opts : options) (scn : scene) (stmt : R.stmt) : scene * C.pro
     scn, []
 
   | Alias (new_nm, old_nm) ->
-    let scn = {scn with scope = {scn.scope with nms = Sectioned.alias scn.scope.nms new_nm old_nm}} in
+    let scn = {scn with scope = Scope.alias scn.scope new_nm old_nm} in
     if opts.dump_visibles then print_visibles scn;
     scn, []
 

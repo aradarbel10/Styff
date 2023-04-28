@@ -164,7 +164,7 @@ let rec infer (scn : scene) : rexpr -> expr * vtyp = function
   (e, t)
 
 | RVar x ->
-  begin match lookup x scn with
+  begin match lookup_term x scn with
   | None -> elab_complain scn (UndefinedVar x)
   | Some (i, t) ->
     match x with
