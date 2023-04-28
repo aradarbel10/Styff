@@ -15,7 +15,7 @@ let onload _ =
     output_clear ();
     let str = Js.to_string (get_editor_contents ()) in
     let js =
-      try compile_prog `str {elab_diagnostics = false; dump_output = true} str
+      try compile_prog `str {elab_diagnostics = false; dump_output = true; dump_visibles = false} str
       with | CompileFailure msg -> output_error (Js.string msg); ""
     in
     output_print (Js.string "compilation finished\n");

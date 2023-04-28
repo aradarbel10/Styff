@@ -110,7 +110,8 @@ stmt:
   | POSTULATE; x=bnd_name; COLON; t=typ { Postulate (x, t) }
   | POSTULATE; TYPE; x=bnd_name; COLON; k=kind { PostulateType (x, k) }
   | d=data_decl { d }
-  | SECTION; x=bnd_name; WHERE; stmts=list(stmt); END { Section (x, stmts) }
+  | o=option(OPEN); SECTION; x=bnd_name; WHERE; stmts=list(stmt); END
+    { Section ((if Option.is_some o then `opened else `closed), x, stmts) }
   | OPEN; x=qual_name { OpenSection x }
   | ALIAS; x=bnd_name; EQ; y=qual_name { Alias (x, y) }
 

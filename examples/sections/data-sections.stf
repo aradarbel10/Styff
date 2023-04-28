@@ -1,0 +1,13 @@
+section Nested where
+  section Deeper where
+    data X : Type where
+    | X1 : X
+    | X2 : X
+  end
+end
+
+infer type test-X = Nested.Deeper.X
+infer test-X1 = Nested.Deeper.X1
+infer test-X2 = Nested.Deeper.X2
+infer test-X-X1 = Nested.Deeper.X.X1
+infer test-X-X2 = Nested.Deeper.X.X2

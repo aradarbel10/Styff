@@ -50,3 +50,8 @@ let diff (xs : 'a list) (ys : 'a list) : 'a list =
 
 let append2 (xs, ys : 'a list * 'b list) (xs', ys' : 'a list * 'b list) : 'a list * 'b list =
   List.append xs xs', List.append ys ys'
+
+let (<|>) (a : 'a option) (b : 'a option) : 'a option =
+  match a, b with
+  | Some a, _ -> Some a
+  | None, b -> b

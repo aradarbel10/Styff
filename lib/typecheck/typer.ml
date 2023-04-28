@@ -355,7 +355,11 @@ let declare_ctor (parent : lvl) (scn : scene) (RCtor {nam; t} : rctor) : scene =
 let declare_data (scn : scene) (x : string) (k : rkind option) (ctors : rctor list) : scene * kind * string list =
   let k = maybe_rkind (freshen_str "k") k in
   let parent = scn.height in (* slightly hacky: get the height before [assume_typ], will be the lvl of the type just defined *)
+
   let scn = assume_typ x k `ESolved scn in
+  let scn = {scn with scope = Scope.enter scn.scope x} in
   let scn = List.fold_left (declare_ctor parent) scn ctors in
+  let scn = {scn with scope = Scope.exit scn.scope `opened} in
+
   let ctor_names = List.map (fun (RCtor {nam; _}) -> nam) ctors in
   define_ctors x ctor_names scn, k, ctor_names

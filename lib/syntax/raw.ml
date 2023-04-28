@@ -43,7 +43,7 @@ type stmt =
 | Postulate of string * rtyp
 | PostulateType of string * rkind
 | DataDecl of string * rkind option * rctor list
-| Section of string * prog
+| Section of [`opened | `closed] * string * prog
 | OpenSection of name
 | Alias of string * name
 and prog = stmt list

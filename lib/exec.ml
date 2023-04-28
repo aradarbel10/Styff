@@ -73,7 +73,7 @@ let rec elab_stmt (opts : options) (scn : scene) (stmt : R.stmt) : scene * C.pro
       print_endline ("type " ^ string_of_name x ^ "\n\t : " ^
         string_of_kind k ^ "\n\t = " ^
         string_of_type scn.scope t);
-    if opts.dump_visibles then print_visibles scn;
+    if opts.dump_visibles then print_visibles scn';
 
     scn', [TDef (x, k, t)]
 
@@ -119,7 +119,7 @@ let rec elab_stmt (opts : options) (scn : scene) (stmt : R.stmt) : scene * C.pro
 
     scn, [DataDecl (qualify scn x, k, List.map (qualify scn) ctors)]
 
-  | Section (sect, stmts) ->
+  | Section (is_open, sect, stmts) ->
     (* enter section *)
     let scn = {scn with scope = Scope.enter scn.scope sect} in
 
@@ -131,7 +131,7 @@ let rec elab_stmt (opts : options) (scn : scene) (stmt : R.stmt) : scene * C.pro
     let scn, stmts' = List.fold_left go_stmt (scn, []) stmts in
 
     (* re-qualify scn *)
-    let scn = {scn with scope = Scope.exit scn.scope} in
+    let scn = {scn with scope = Scope.exit scn.scope is_open} in
 
     scn, stmts'
 
@@ -146,7 +146,7 @@ let rec elab_stmt (opts : options) (scn : scene) (stmt : R.stmt) : scene * C.pro
     scn, []
 
 let builtins_prog : R.prog = [
-  Section ("builtin", [
+  Section (`closed, "builtin", [
     PostulateType ("int", RStar);
     Postulate ("int-add", RArrow (RBase `Int, RArrow (RBase `Int, RBase `Int)));
     Postulate ("int-mul", RArrow (RBase `Int, RArrow (RBase `Int, RBase `Int)));

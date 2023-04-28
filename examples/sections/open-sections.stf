@@ -1,0 +1,21 @@
+open section A where
+  let x = 100
+end
+
+let z = 200
+
+infer unqualified = x
+infer qualified = A.x
+
+
+type B = builtin.int
+open section B where
+  let b1 : B = 1
+  let b2 : B = 2
+end
+
+infer unqual1 = b1
+infer unqual2 = b2
+infer qual1 = B.b1
+infer qual2 = B.b2
+infer type Btyp = B
