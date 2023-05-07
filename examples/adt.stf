@@ -10,7 +10,7 @@ data List : ∗ → ∗ where
 
 let nums : List Nat = zero :: succ zero :: succ (succ zero) :: three :: nil
 
-(* pattern matching
+(* pattern matching *)
 let rec nat_add (a : Nat) (b : Nat) : Nat =
   match a with
   | zero . b
@@ -25,9 +25,9 @@ let rec list_concat {T : ∗} (xs : List T) (ys : List T) : List T =
 
 print three
 print nat_add three three
-print list_concat nums nums *)
+print list_concat nums nums
 
-(* GADTs
+(* GADTs *)
 data T : ∗ → ∗ where
 | T1 : {a} → a → T a
 | T2 : builtin.int → T builtin.bool
@@ -36,4 +36,4 @@ let useT {b : ∗} (t : T b) : b =
   match t with
   | T1 x . x
   | T2 n . builtin.bool-true
-  end *)
+  end

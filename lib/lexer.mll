@@ -60,7 +60,6 @@ rule read = parse
   | "end"       { END }
   | "∗"         { STAR }
   | "Type"      { STAR }
-  | "lam"       { LAM }
   | "λ"         { LAM }
   | '\\'        { LAM }
   | '.'         { DOT }
