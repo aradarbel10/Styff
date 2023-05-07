@@ -3,7 +3,7 @@ open Syntax.Raw
 open Unif
 open Eval
 open Scene
-open Util
+open! Util
 open Errors
 
 (*
@@ -21,8 +21,9 @@ let local_unify (t : vtyp) (t' : vtyp) (scn : scene) : scene =
 *)
 let infer_pattern (scn : scene) (RPCtor (ctor, args) : rpattern) : scene * pattern * vtyp =
   match lookup_term ctor scn with
-  | None -> failwith "absurd!" (* ctors will be verified before going into branches *)
-  | Some (i, typ_all) ->
+  | None (* ctors will be verified before going into branches *)
+    | Some (_, _, EVar) -> elab_complain scn (UndefinedVar ctor)
+  | Some (i, typ_all, ECtor _) ->
     let rec go (scn, acc : scene * pat_arg list) (args : pat_arg list) (typ : vtyp) : scene * pat_arg list * vtyp =
       match args, force typ with
       | PTvar v :: args, VForall (_, c) ->
@@ -53,10 +54,9 @@ let norm_branch_scn (PCtor (_, args) : pattern) (scn : scene) : scene =
   let rec go (args : pat_arg list) (ctx : ctx) (env : env) : ctx =
     match args, ctx, env with
     | [], _, _ -> ctx
-    | PVar  _ :: args, t :: ctx, env ->
+    | PVar  _ :: args, (t, entry) :: ctx, env ->
       let ctx = go args ctx env in
-      let t = vnorm env t in
-      t :: ctx
+      (vnorm env t, entry) :: ctx
     | PTvar _ :: args, ctx, _ :: env ->
       go args ctx env
     | _ -> failwith "absurd!" (* args and scene will be synchronized *)
@@ -66,33 +66,31 @@ let scene_of_pattern (scn : scene) (scrut_typ : vtyp) (pat : rpattern) : pattern
   let (scn, pat, pat_typ) = infer_pattern scn pat in
   let scn = norm_branch_scn pat @@ local_unify pat_typ scrut_typ scn in
   (pat, scn)
-
-  (* exception DuplicateCases
-  exception MissingCases
-  exception UnrelatedCases *)
   
 (* check all constructors are matched exactly once *)
-let check_same_parent (scn : scene) (ctors : name list) : name =
-  let parents = List.map (fun c -> c, List.assoc c scn.parents) ctors in
+let check_same_parent (scn : scene) (pats : pattern list) : lvl * idx list =
+  let parents= List.map (fun (PCtor (i, _)) -> match at_idx scn.ctx i with
+    | _, ECtor {parent; _} -> (parent, i)
+    | _ -> failwith "absurd!") pats in
   match parents with
   | [] -> failwith "empty match unsupported"
-  | (_, parent) :: rest ->
-    List.iter (fun (ctor, p) -> if p != parent then elab_complain scn (UnrelatedCase ctor) else ()) rest;
-    parent
-    (* if List.for_all (fun p -> p = parent) rest
-      then parent
-      else raise UnrelatedCases *)
+  | (parent, _) :: rest ->
+    rest |> List.iter (fun (p, ctor) ->
+      if p != parent
+        then elab_complain scn (UnrelatedCase ctor)
+        else ());
+    parent, snd (List.split parents)
 
-let check_coverage (scn : scene) (branches : (rpattern * rexpr) list) : unit =
-  let ctors = List.map (fun (RPCtor (x, _), _) -> x) branches in
-  let parent = check_same_parent scn ctors in
-  match List.assoc_opt parent scn.ctors with
+let check_coverage (scn : scene) (pats : pattern list) : unit =
+  let parent, ctors = check_same_parent scn pats in
+  match List.assoc_opt parent scn.ctors_of with
   | None -> failwith "absurd!" (* parent returned from scene must exist *)
   | Some cover ->
+    let cover = List.map (lvl2idx (Lvl scn.scope.term_height)) cover in
     List.iter (fun ctor ->
       if mem_once ctor ctors
         then ()
       else if List.mem ctor ctors
-        then elab_complain scn (DuplicateCase ctor)
-        else elab_complain scn (MissingCases (Util.diff cover ctors))
+        then elab_complain scn (DuplicateCase ctor) (* TODO: put back name in error *)
+        else elab_complain scn (MissingCases (Util.diff cover ctors)) (* TODO: put back name in error *)
     ) cover

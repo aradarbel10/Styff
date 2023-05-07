@@ -123,14 +123,13 @@ let rec kind_of (scn : scene) : rtyp -> typ * kind = function
   let t = is_type (assume_typ x xk `EUnsolved scn) t in
   (Forall (x, xk, B t), Star)
 | RHole -> (fresh (mask_of scn) "t", Star)
-| RQvar x ->
-  match lookup_type x scn with
-  | None -> elab_complain scn (UndefinedQVar x)
-  | Some (i, k) ->
-    match x with
-    | ["builtin"; "int"] -> Base `Int, k
-    | ["builtin"; "bool"] -> Base `Bool, k
-    | _ -> Qvar i, k
+| RQvar x -> begin match x with
+  | ["builtin"; "int"] -> Base `Int, Star
+  | ["builtin"; "bool"] -> Base `Bool, Star
+  | x -> match lookup_type x scn with
+    | None -> elab_complain scn (UndefinedQVar x)
+    | Some (i, k) -> Qvar i, k
+  end
 and is_type (scn : scene) (t : rtyp) : typ =
   let (t, k) = kind_of scn t in
   unify_kinds k Star;
@@ -164,25 +163,25 @@ let rec infer (scn : scene) : rexpr -> expr * vtyp = function
   (e, t)
 
 | RVar x ->
-  begin match lookup_term x scn with
-  | None -> elab_complain scn (UndefinedVar x)
-  | Some (i, t) ->
-    match x with
-    | ["builtin"; "int-add"] ->
-      let e = saturate scn.height t (function
-      | [`TmArg e1; `TmArg e2] -> BinOp (e1, IntAdd, e2)
-      | _ -> failwith "absurd!")
-      in e, t
-    | ["builtin"; "int-mul"] ->
-      let e = saturate scn.height t (function
-      | [`TmArg e1; `TmArg e2] -> BinOp (e1, IntMul, e2)
-      | _ -> failwith "absurd!")
-      in e, t
-    | ["builtin"; "bool-true"] -> Lit (`Bool true), t
-    | ["builtin"; "bool-false"] -> Lit (`Bool false), t
-    | _ -> match List.assoc_opt x scn.ctor_params with
-      | None -> Var i, t
-      | Some params -> lams_ctor scn.height i params, t
+  begin match x with
+  | ["builtin"; "int-add"] ->
+    let t = VArrow (VBase `Int, VArrow (VBase `Int, VBase `Int)) in
+    let e = saturate scn.height t (function
+    | [`TmArg e1; `TmArg e2] -> BinOp (e1, IntAdd, e2)
+    | _ -> failwith "absurd!")
+    in e, t
+  | ["builtin"; "int-mul"] ->
+    let t = VArrow (VBase `Int, VArrow (VBase `Int, VBase `Int)) in
+    let e = saturate scn.height t (function
+    | [`TmArg e1; `TmArg e2] -> BinOp (e1, IntMul, e2)
+    | _ -> failwith "absurd!")
+    in e, t
+  | ["builtin"; "bool-true"] -> Lit (`Bool true), VBase `Bool
+  | ["builtin"; "bool-false"] -> Lit (`Bool false), VBase `Bool
+  | x -> match lookup_term x scn with
+    | None -> elab_complain scn (UndefinedVar x)
+    | Some (i, t, ECtor {parent = _; params}) -> lams_ctor scn.height i params, t
+    | Some (i, t, EVar) -> Var i, t
   end
 
 | RLam (x, xt, e) ->
@@ -225,13 +224,18 @@ let rec infer (scn : scene) : rexpr -> expr * vtyp = function
   let (rest, trest) = infer (assume x te scn) rest in
   (Let (rc, x, quote scn.height te, e, rest), trest)
 
+(* TODO: reorganize this case (and more stuff with ctors) *)
 | RMatch (scrut, branches) ->
-  check_coverage scn branches;
   let (scrut, scrut_typ) = infer scn scrut in
   let t = eval scn.env (fresh (mask_of scn) "t") in
   let branch_typs = List.map (fun (pat, branch) -> infer_branch scn scrut_typ pat branch) branches in
   ignore @@ List.map (fun (_, _, t') -> unify' scn t t') branch_typs;
-  (Match (scrut, List.map (fun (p, e, _) -> (p, e)) branch_typs), t)
+
+  let branches' = List.map (fun (p, e, _) -> (p, e)) branch_typs in
+  let patterns = List.map (fun (p, _) -> p) branches' in
+
+  check_coverage scn patterns;
+  (Match (scrut, branches'), t)
 
 | RLit n ->
   (Lit n, VBase (infer_lit n))
@@ -273,9 +277,9 @@ and check (scn : scene) (e : rexpr) (t : vtyp) : expr = match e, force t with
   Let (rc, x, quote scn.height te, e, rest)
 
 | RMatch (scrut, branches), ret_typ ->
-  check_coverage scn branches;
   let (scrut, scrut_typ) = infer scn scrut in
   let branch_typs = List.map (fun (pat, branch) -> check_branch scn scrut_typ pat branch ret_typ) branches in
+  check_coverage scn (fst @@ List.split branch_typs);
   Match (scrut, branch_typs)
   
 | e, actual_t ->
@@ -344,13 +348,14 @@ let rec return_type (hi : lvl) : vtyp -> vtyp * vparam list = function
 
 (* modify the scene with a new data declaration and its constructors *)
 exception BadCtorReturn
-let declare_ctor (parent : lvl) (scn : scene) (RCtor {nam; t} : rctor) : scene =
+let declare_ctor (parent : lvl) (scn : scene) (RCtor {nam; t} : rctor) : scene * lvl =
   let t = is_type scn t in
   let vt = eval scn.env t in
   let rett = return_type scn.height (eval scn.env t) in (* ctor's return type must be the data it belongs to *)
   match rett with
   | VNeut (VQvar i, _), params when parent = i ->
-    define_ctor_params nam params (assume nam vt scn)
+    let ctor_lvl = scn.scope.term_height in
+    assume_ctor nam vt parent params scn, Lvl ctor_lvl
   | _ -> raise BadCtorReturn
 let declare_data (scn : scene) (x : string) (k : rkind option) (ctors : rctor list) : scene * kind * string list =
   let k = maybe_rkind (freshen_str "k") k in
@@ -358,8 +363,8 @@ let declare_data (scn : scene) (x : string) (k : rkind option) (ctors : rctor li
 
   let scn = assume_typ x k `ESolved scn in
   let scn = {scn with scope = Scope.enter scn.scope x} in
-  let scn = List.fold_left (declare_ctor parent) scn ctors in
+  let scn, ctor_lvls = List.fold_left_map (declare_ctor parent) scn ctors in
   let scn = {scn with scope = Scope.exit scn.scope `opened} in
 
   let ctor_names = List.map (fun (RCtor {nam; _}) -> nam) ctors in
-  define_ctors x ctor_names scn, k, ctor_names
+  assume_ctors_of parent ctor_lvls scn, k, ctor_names

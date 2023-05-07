@@ -114,7 +114,7 @@ let rec elab_stmt (opts : options) (scn : scene) (stmt : R.stmt) : scene * C.pro
   | DataDecl (x, k, ctors) ->
     let scn, k, ctors = declare_data scn x k ctors in
     if opts.elab_diagnostics then
-      print_endline ("declared data " ^ x);
+      print_endline ("declared data " ^ x ^ " with ctors " ^ string_of_names (List.map (fun str -> [str]) ctors));
     if opts.dump_visibles then print_visibles scn;
 
     scn, [DataDecl (qualify scn x, k, List.map (qualify scn) ctors)]
@@ -145,24 +145,12 @@ let rec elab_stmt (opts : options) (scn : scene) (stmt : R.stmt) : scene * C.pro
     if opts.dump_visibles then print_visibles scn;
     scn, []
 
-let builtins_prog : R.prog = [
-  Section (`closed, "builtin", [
-    PostulateType ("int", RStar);
-    Postulate ("int-add", RArrow (RBase `Int, RArrow (RBase `Int, RBase `Int)));
-    Postulate ("int-mul", RArrow (RBase `Int, RArrow (RBase `Int, RBase `Int)));
-    
-    PostulateType ("bool", RStar);
-    Postulate ("bool-true", RBase `Bool);
-    Postulate ("bool-false", RBase `Bool);
-  ])
-]
-
 let elab_prog (opts : options) (prog : R.prog) : C.prog =
   let go_stmt (acc_scn, acc_prog : scene * C.prog) (stmt : R.stmt) =
     let acc_scn', acc_prog' = elab_stmt opts acc_scn stmt in
     acc_scn', acc_prog @ acc_prog'
   in
-  let preambled = builtins_prog @ prog in
+  let preambled = prog in
   let _, stmts' = List.fold_left go_stmt (empty_scene, []) preambled in
   stmts'
 

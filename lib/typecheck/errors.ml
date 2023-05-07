@@ -2,6 +2,8 @@ open Scene
 open Syntax.Common
 
 let quoted (nm : name) : string = "`" ^ string_of_name nm ^ "`"
+let quoted_idx (scp : Scope.t) (i : idx) : string =
+  quoted @@ Scope.ith_term scp i
 
 type elab_code =
 | UndefinedVar of name
@@ -11,26 +13,26 @@ type elab_code =
 | TooManyArgsInPattern of name (* todo: add expected vs actual parameter counts *)
 | UnexpectedTArgPattern
 
-| DuplicateCase of name
-| MissingCases of name list
-| UnrelatedCase of name
+| DuplicateCase of idx
+| MissingCases of idx list
+| UnrelatedCase of idx
 type elab_err = {
   code : elab_code;
   scp : Scope.t;
   range : src_range;
 }
-let show_elab_err ({code; scp = _; range = rng} : elab_err) : string =
+let show_elab_err ({code; scp = scp; range = rng} : elab_err) : string =
   string_of_range rng ^ ": " ^ match code with
   | UndefinedVar x -> "undefined variable " ^ quoted x
   | UndefinedQVar x -> "undefined type var " ^ quoted x
   | UnificationFailure (t1, t2) -> "unification failure: expected " ^ t1 ^ " but got " ^ t2
   | TooManyArgsInPattern ctor -> "pattern with ctor " ^ quoted ctor ^ " has too many arguments"
   | UnexpectedTArgPattern -> "unexpected type argument in pattern"
-  | DuplicateCase ctor -> "match clause has duplicate cases for `" ^ quoted ctor ^ "`"
-  | UnrelatedCase ctor -> "match clause has an unrelated constructor `" ^ quoted ctor  ^ "`"
+  | DuplicateCase ctor -> "match clause has duplicate cases for " ^ quoted_idx scp ctor
+  | UnrelatedCase ctor -> "match clause has an unrelated constructor " ^ quoted_idx scp ctor
   | MissingCases ctors ->
     let ctors, rest = Util.take_or_less 3 ctors in
-    let ctors = List.map quoted ctors in
+    let ctors = List.map (quoted_idx scp) ctors in
     "match clause is missing a case for: " ^ String.concat ", " ctors
     ^ match rest with
     | None -> "."

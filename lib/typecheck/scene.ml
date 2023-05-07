@@ -116,8 +116,8 @@ module Scope = struct
       | Some (TypeEntry (full, lvl)) -> Some (full, lvl2idx (Lvl type_height) lvl)
       | _ -> None
     ) None names
-  let ith_term t (Idx i) = List.nth t.term_scope i
-  let ith_type t (Idx i) = List.nth t.type_scope i
+  let ith_term t i = at_idx t.term_scope i
+  let ith_type t i = at_idx t.type_scope i
   let enter t sect = {t with
     names = (sect, []) :: t.names;
     prefix = sect :: t.prefix;
@@ -153,22 +153,26 @@ end
   ctors - associates data to a list of constructors
   parents - associates constructors to their parents
 
+  height - length of tctx, stored separately to avoid re-calculation
   tctx - maps type variables to kinds 
   env - maps type variables to values
-  height - length of tctx, stored separately to avoid re-calculation
   
   scope - all the bound names (term and type level) locally visible
   range - the range in source of the AST node currently processed
 *)
-type ctx = vtyp list
+type ctx_entry =
+| EVar
+| ECtor of {parent : lvl; params : vparam list}
+
+type ctx = (vtyp * ctx_entry) list
 type tctx = kind list
 
 type scene = {
   ctx : ctx;
 
-  ctors : (name * name list) list;
-  parents : (name * name) list;
-  ctor_params : (name * vparam list) list;
+  ctors_of : (lvl * lvl list) list;
+  (* parents : (lvl * lvl) list;
+  is_ctor : (name * vparam list) list; *)
 
   height : lvl;
   tctx : tctx;
@@ -180,9 +184,7 @@ type scene = {
 
 let empty_scene : scene = {
   ctx = [];
-  ctors = [];
-  parents = [];
-  ctor_params = [];
+  ctors_of = [];
   height = Lvl 0;
   tctx = [];
   env = [];
@@ -192,7 +194,7 @@ let empty_scene : scene = {
 
 let assume (x : string) (t : vtyp) (scn : scene) : scene =
   {scn with
-    ctx = t :: scn.ctx;
+    ctx = (t, EVar) :: scn.ctx;
     scope = Scope.push_term scn.scope x;
   }
 
@@ -215,31 +217,28 @@ let define_typ (x : string) (t : vtyp) (k : kind) (scn : scene) : scene =
 let mask_of (scn : scene) : mask =
   List.map (fun (_, bound, _) -> bound) scn.env
 let qualify (scn : scene) (x : string) : name = List.rev (x :: scn.scope.prefix)
-
-
-let define_ctor_params (ctor : string) (params : vparam list) (scn : scene) : scene =
+let assume_ctor (x : string) (t : vtyp) (parent : lvl) (params : vparam list) (scn : scene) : scene =
   {scn with
-    ctor_params = (qualify scn ctor, params) :: scn.ctor_params
+    ctx = (t, ECtor {parent = parent; params = params}) :: scn.ctx;
+    scope = Scope.push_term scn.scope x;
   }
 
-let define_ctors (x : string) (ctors : string list) (scn : scene) : scene =
-  let x = qualify scn x in
-  let ctors = List.map (qualify scn) ctors in
+let assume_ctors_of (x : lvl) (ctors : lvl list) (scn : scene) : scene =
   {scn with
-    ctors = (x, ctors) :: scn.ctors;
-    parents = List.map (fun c -> (c, x)) ctors @ scn.parents
+    ctors_of = (x, ctors) :: scn.ctors_of;
+    (* parents = List.map (fun c -> (c, x)) ctors @ scn.parents *)
   }
 
-let lookup_term (nm : name) (scn : scene) : (idx * vtyp) option =
+let lookup_term (nm : name) (scn : scene) : (idx * vtyp * ctx_entry) option =
   match Scope.lookup_term scn.scope nm with
   | None -> None
-  | Some (_, Idx i) ->
-    let t = List.nth scn.ctx i in
-    Some (Idx i, t)
+  | Some (_, i) ->
+    let (t, e) = at_idx scn.ctx i in
+    Some (i, t, e)
 
 let lookup_type (nm : name) (scn : scene) : (idx * kind) option =
   match Scope.lookup_type scn.scope nm with
   | None -> None
-  | Some (_, Idx i) ->
-    let k = List.nth scn.tctx i in
-    Some (Idx i, k)
+  | Some (_, i) ->
+    let k = at_idx scn.tctx i in
+    Some (i, k)

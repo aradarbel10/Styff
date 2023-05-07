@@ -1,0 +1,15 @@
+data Nat : Type where
+| zero : Nat
+| succ : Nat -> Nat
+
+(* demonstrate shawoding
+let zero : builtin.int = 0
+let succ (x : builtin.int) : builtin.int = builtin.int-add x 1 *)
+
+let rec (+) (m : Nat) (n : Nat) : Nat =
+  match m with
+  | Nat.zero . n
+  | Nat.succ m . Nat.succ (m + n)
+  end
+  
+print (succ (succ zero)) + (succ zero)
