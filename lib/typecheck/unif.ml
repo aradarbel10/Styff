@@ -95,22 +95,22 @@ let solve (hi : lvl) (tv : tvar ref) (k : kind) (sp : spine) (t : vtyp) : unit =
   let sol = eval [] (close ren.dom k rhs) in
   tv := Solved sol
 
-let rec assign_local (env : env ref) (lvl : lvl) (t : vtyp) : unit =
+let rec assign_local (hi : lvl) (env : env ref) (lvl : lvl) (t : vtyp) : unit =
   let vne = List.rev !env in
-  let (solved, _, _) = List.nth vne (unLvl lvl) in
+  let (solved, _, t') = List.nth vne (unLvl lvl) in
   let entry = match solved with
-    | `ESolved -> failwith "idk what to do"
+    | `ESolved -> unify hi (Local env) t t'; (`ESolved, `EDefed, t)
     | `EUnsolved -> (`ESolved, `EDefed, t)
   in
   let vne' = List.mapi (fun i e -> if i = unLvl lvl then entry else e) vne in
   env := List.rev vne';
-and solve_local (env : env ref) (_hi : lvl) (i : lvl) (i' : lvl) : unit =
+and solve_local (env : env ref) (hi : lvl) (i : lvl) (i' : lvl) : unit =
   match lookup_lvl i !env, lookup_lvl i' !env with (* should maybe add some kind of forcing/just represent env more like metactx *)
   | None, _ | _, None -> failwith "absurd!" (* ill scoped value *)
   | Some (_, _, t), Some (_, _, t') when t = t' -> ()
   | Some (`EUnsolved, _, u), Some (_, _, t) | Some (_, _, t), Some (`EUnsolved, _, u) ->
     begin match force u with
-    | VNeut (VQvar i, []) -> assign_local env i t
+    | VNeut (VQvar i, []) -> assign_local hi env i t
     | _ -> failwith "absurd!" (* invalid unsolved value *)
     end
   | Some (`ESolved, _, t), Some (`ESolved, _, t') -> (* TODO unify hi (Local env) t t' *)
@@ -120,12 +120,13 @@ and solve_local (env : env ref) (_hi : lvl) (i : lvl) (i' : lvl) : unit =
    thanks to NbE we don't need to worry about a complicated equational theory. *)
 and unify (hi : lvl) (mode : unif_mode) (typ : vtyp) (typ' : vtyp) : unit =
   match mode, force typ, force typ' with
+  | _, typ, typ' when typ = typ' -> ()
   | _, VNeut (VTvar (tv, k), sp), VNeut (VTvar (tv', k'), sp') when tv = tv' ->
     unify_kinds k k'; unify_spines hi mode sp sp'
   | Global, VNeut (VTvar (tv, k), sp), t
   | Global, t, VNeut (VTvar (tv, k), sp) -> solve hi tv k sp t
   | Global, VNeut (VQvar i, sp), VNeut (VQvar i', sp') when i = i' -> unify_spines hi mode sp sp'
-  | Local env, VNeut (VQvar i, []), t | Local env, t, VNeut (VQvar i, []) -> assign_local env i t
+  | Local env, VNeut (VQvar i, []), t | Local env, t, VNeut (VQvar i, []) -> assign_local hi env i t
   | Local env, VNeut (VQvar i, sp), VNeut (VQvar i', sp') -> unify_spines hi mode sp sp'; solve_local env hi i i'
   (* TODO cleanup *)
   | _, VArrow (ltyp, rtyp), VArrow (ltyp', rtyp') ->

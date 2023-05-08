@@ -9,23 +9,23 @@ data Nat : ∗ where
 
 let three = succ (succ (succ zero))
 
-data List : ∗ → ∗ where
-| nil  : {a} → List a
-| (::) : {a} → a → List a → List a
+data List (a : ∗) : ∗ where
+| nil  : List a
+| (::) : a → List a → List a
 
 let nums : List Nat = zero :: succ zero :: succ (succ zero) :: three :: nil
 
 (* pattern matching *)
-let rec nat_add (a : Nat) (b : Nat) : Nat =
+let rec (+) (a : Nat) (b : Nat) : Nat =
   match a with
   | zero . b
-  | succ a' . succ (nat_add a' b)
+  | succ a' . succ (a' + b)
   end
 
-let rec list_concat {T : ∗} (xs : List T) (ys : List T) : List T =
+let rec (++) {T : ∗} (xs : List T) (ys : List T) : List T =
   match xs with
   | nil . ys
-  | x :: xs' . x :: (list_concat xs' ys)
+  | x :: xs' . x :: (xs' ++ ys)
   end
 ```
 
@@ -41,12 +41,14 @@ let rec list_concat {T : ∗} (xs : List T) (ys : List T) : List T =
 - higher kinded quantification
     - kind annotations on type binders
 - data declarations
+    - both data parameters and indices
     - GADT syntax
     - shallow pattern matching
         - scoped type variables (without "dot patterns")
         - matching on indexed types
 - user-defined infix operator
     - infix type formers
+    - infix patterns
 - compilation to javascript
 
 ### Future Ideas/TODOs
@@ -56,12 +58,8 @@ let rec list_concat {T : ∗} (xs : List T) (ys : List T) : List T =
     - and, or, if
     - comparisons
 
-- datatype parameters
 - bring back `∀` syntax sugar
 
-- error reporting
-    - from parsing
-    - from typechecking
 - logging (for debugging and good errors)
 
 - small & super simple module system and stdlib

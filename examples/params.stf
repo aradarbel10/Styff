@@ -22,7 +22,7 @@ section Splitter where
   data (|*|) (A : ∗) (B : ∗) : ∗ where
   | (,) : A → B → A |*| B
 
-  let go-head {A : ∗} {B : ∗} (hd : A |+| B) (abs : List A |*| List B) : List A |*| List B =
+  let go-head {A B : ∗} (hd : A |+| B) (abs : List A |*| List B) : List A |*| List B =
     match abs with
     | as, bs .
       match hd with
@@ -31,7 +31,7 @@ section Splitter where
       end
     end
 
-  let rec split {A : ∗} {B : ∗} (xs : List (A |+| B)) : List A |*| List B =
+  let rec split {A B : ∗} (xs : List (A |+| B)) : List A |*| List B =
     match xs with
     | nil . (nil, nil)
     | hd :: tl . go-head hd (split tl)
