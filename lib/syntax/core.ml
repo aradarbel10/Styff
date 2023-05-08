@@ -84,13 +84,16 @@ and kvar =
 | KSolved of kind
 | KUnsolved of string
 
+type tparam =
+| TParam of string * kind
+
 type stmt =
 | Def of bool * name * typ * expr
 | TDef of name * kind * typ
 | Print of expr
 | Postulate of name * typ
 | PostulateType of name * kind
-| DataDecl of name * kind * name list
+| DataDecl of name * tparam list * kind * name list
 and prog = stmt list
 
 

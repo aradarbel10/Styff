@@ -5,8 +5,8 @@ data Nat : ∗ where
 let three = succ (succ (succ zero))
 
 data List : ∗ → ∗ where
-| nil  : {a} → List a
-| (::) : {a} → a → List a → List a
+| nil  : {A : ∗} → List A
+| (::) : {A : ∗} → A → List A → List A
 
 let nums : List Nat = zero :: succ zero :: succ (succ zero) :: three :: nil
 

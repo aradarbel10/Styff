@@ -21,20 +21,19 @@ let local_unify (t : vtyp) (t' : vtyp) (scn : scene) : scene =
 *)
 let infer_pattern (scn : scene) (RPCtor (ctor, args) : rpattern) : scene * pattern * vtyp =
   match lookup_term ctor scn with
-  | None (* ctors will be verified before going into branches *)
-    | Some (_, _, EVar) -> elab_complain scn (UndefinedVar ctor)
+  | None | Some (_, _, EVar) -> elab_complain scn (UndefinedVar ctor)
   | Some (i, typ_all, ECtor _) ->
     let rec go (scn, acc : scene * pat_arg list) (args : pat_arg list) (typ : vtyp) : scene * pat_arg list * vtyp =
       match args, force typ with
       | PTvar v :: args, VForall (_, c) ->
         let rest_typ = cinst_at scn.height c in
-        let scn = assume_typ v c.knd `EUnsolved scn in
+        let scn, _ = assume_typ v c.knd `EUnsolved scn in
         go (scn, PTvar v :: acc) args rest_typ
       | args, (VForall (x, _) as typ) ->
         go (scn, acc) (PTvar x :: args) typ (* insert artificial param-tvar and retry with same typ *)
       | PTvar _ :: _, _ -> raise (ElabFailure {code = UnexpectedTArgPattern; scp = scn.scope; range = scn.range})
       | PVar v :: args, VArrow (lt, rt) ->
-        let scn = assume v lt scn in
+        let scn = fst @@ assume v lt scn in
         go (scn, PVar v :: acc) args rt
       | PVar _ :: _, _ -> raise (ElabFailure {code = TooManyArgsInPattern ctor; scp = scn.scope; range = scn.range})
       | [], typ -> scn, List.rev acc, typ

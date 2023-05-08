@@ -196,9 +196,13 @@ bind_annotk:
   | COLON; k=kind { k }
 
 
+tparam:
+  | x=bnd_name { RTParam (x, None) }
+  | LPAREN; x=bnd_name; COLON; k=kind; RPAREN { RTParam (x, Some k) }
+
 data_decl:
-  | DATA; x=bnd_name; k=option(bind_annotk); WHERE; cs=list(ctor_decl)
-    { DataDecl (x, k, cs) }
+  | DATA; x=bnd_name; tps=list(tparam); COLON; k=kind; WHERE; cs=list(ctor_decl)
+    { DataDecl (x, tps, k, cs) }
 ctor_decl:
   | PIPE; x=bnd_name; COLON; t=typ
     { RCtor {nam = x; t = t} }

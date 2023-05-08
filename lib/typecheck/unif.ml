@@ -125,11 +125,9 @@ and unify (hi : lvl) (mode : unif_mode) (typ : vtyp) (typ' : vtyp) : unit =
   | Global, VNeut (VTvar (tv, k), sp), t
   | Global, t, VNeut (VTvar (tv, k), sp) -> solve hi tv k sp t
   | Global, VNeut (VQvar i, sp), VNeut (VQvar i', sp') when i = i' -> unify_spines hi mode sp sp'
-  | Local env, VNeut (VQvar i, sp), VNeut (VQvar i', sp') -> unify_spines hi mode sp sp'; solve_local env hi i i'
   | Local env, VNeut (VQvar i, []), t | Local env, t, VNeut (VQvar i, []) -> assign_local env i t
-  (* TODO cleanup
-  | Local env, VNeut (VQvar i, sp), t
-  | Local env, t, VNeut (VQvar i, sp) -> solve_local hi env i sp t *)
+  | Local env, VNeut (VQvar i, sp), VNeut (VQvar i', sp') -> unify_spines hi mode sp sp'; solve_local env hi i i'
+  (* TODO cleanup *)
   | _, VArrow (ltyp, rtyp), VArrow (ltyp', rtyp') ->
     unify hi mode ltyp ltyp'; unify hi mode rtyp rtyp'
   | _, VAbs (_, c), VAbs (_, c') -> unify (inc hi) mode (cinst_at hi c) (cinst_at hi c')

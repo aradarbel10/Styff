@@ -56,7 +56,7 @@ let rec elab_stmt (opts : options) (scn : scene) (stmt : R.stmt) : scene * C.pro
       print_endline ("let " ^ string_of_name x ^ "\n\t : " ^
         string_of_vtype bod_scn.scope typ ^ "\n\t = " ^
         string_of_expr bod_scn.scope bod);
-    if opts.dump_visibles then print_visibles scn;
+    if opts.dump_visibles then print_visibles full_scn;
 
     (* zonk everything *)
     let typ = quote bod_scn.height typ in
@@ -102,22 +102,22 @@ let rec elab_stmt (opts : options) (scn : scene) (stmt : R.stmt) : scene * C.pro
 
     if opts.dump_visibles then print_visibles scn;
 
-    assume x vt scn, [Postulate (qualify scn x, t)]
+    fst (assume x vt scn), [Postulate (qualify scn x, t)]
 
   | PostulateType (x, k) ->
     let k = lower_kind k in
 
     if opts.dump_visibles then print_visibles scn;
 
-    assume_typ x k `ESolved scn, [PostulateType (qualify scn x, k)]
+    fst (assume_typ x k `ESolved scn), [PostulateType (qualify scn x, k)]
 
-  | DataDecl (x, k, ctors) ->
-    let scn, k, ctors = declare_data scn x k ctors in
+  | DataDecl (x, tps, k, ctors) ->
+    let scn, tps, k, ctors = declare_data scn x tps k ctors in
     if opts.elab_diagnostics then
       print_endline ("declared data " ^ x ^ " with ctors " ^ string_of_names (List.map (fun str -> [str]) ctors));
     if opts.dump_visibles then print_visibles scn;
 
-    scn, [DataDecl (qualify scn x, k, List.map (qualify scn) ctors)]
+    scn, [DataDecl (qualify scn x, tps, k, List.map (qualify scn) ctors)]
 
   | Section (is_open, sect, stmts) ->
     (* enter section *)
@@ -168,7 +168,7 @@ let zonk_stmt (scp : zonk_scope) : C.stmt -> zonk_scope * Z.prog = function
 | Print e -> scp, [Print (zonk_expr scp e)]
 | Postulate (x, _) -> {scp with nms = zonk_name x :: scp.nms}, []
 | PostulateType (x, _) -> {scp with tps = zonk_name x :: scp.tps}, []
-| DataDecl (x, _, ctors) ->
+| DataDecl (x, _, _, ctors) ->
   let scp = {scp with tps = zonk_name x :: scp.tps} in
   let scp = List.fold_left zonk_ctor scp ctors in
   scp, []

@@ -1,0 +1,45 @@
+type int = builtin.int
+type bool = builtin.bool
+let tt = builtin.bool-true
+let ff = builtin.bool-false
+
+(* indexed types *)
+data Box (B : ∗) : ∗ where
+| box : B → Box B
+
+infer b = box 42
+
+(* more elaborate example *)
+section Splitter where
+  data List (T : ∗) : ∗ where
+  | nil  : List T
+  | (::) : T → List T → List T
+
+  data (|+|) (X : ∗) (Y : ∗) : ∗ where
+  | inl : X → X |+| Y
+  | inr : Y → X |+| Y
+
+  data (|*|) (A : ∗) (B : ∗) : ∗ where
+  | (,) : A → B → A |*| B
+
+  let go-head {A : ∗} {B : ∗} (hd : A |+| B) (abs : List A |*| List B) : List A |*| List B =
+    match abs with
+    | as, bs .
+      match hd with
+      | inl a . (a :: as), bs
+      | inr b . as, (b :: bs)
+      end
+    end
+
+  let rec split {A : ∗} {B : ∗} (xs : List (A |+| B)) : List A |*| List B =
+    match xs with
+    | nil . (nil, nil)
+    | hd :: tl . go-head hd (split tl)
+    end
+
+  let items : List (int |+| bool) =
+    inl 42 :: inl 5 :: inr tt :: inl 100 :: inr ff :: nil
+  print items
+
+  print split items
+end

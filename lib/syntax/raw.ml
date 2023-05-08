@@ -18,6 +18,8 @@ type rtyp =
 type rparam =
 | RParam of string * rtyp option
 | RTParam of string * rkind option
+type rtparam =
+| RTParam of string * rkind option
 
 type rpattern = RPCtor of name * pat_arg list
 type rexpr =
@@ -42,7 +44,7 @@ type stmt =
 | Print of rexpr
 | Postulate of string * rtyp
 | PostulateType of string * rkind
-| DataDecl of string * rkind option * rctor list
+| DataDecl of string * rtparam list * rkind * rctor list
 | Section of [`opened | `closed] * string * prog
 | OpenSection of name
 | Alias of string * name

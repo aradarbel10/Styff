@@ -52,7 +52,7 @@ let lams_ctor (hi' : lvl) (Idx ctor : idx) (params : vparam list) =
   in go hi' params
 
 (* make sure the function is fully applied to all its arguments by wrapping it in lambdas *)
-let saturate (hi : lvl) (typ : vtyp) (fn : arg list -> expr) : expr =
+let saturate (hi : lvl) (typ : vtyp) (fn : int -> arg list -> expr) : expr =
   let rec args_of_typ (hi : lvl) (typ : vtyp) : arg list * [`TmParam of typ | `TpParam of kind] list * int * int =
     match force typ with
     | VArrow(lt, rt) ->
@@ -66,24 +66,23 @@ let saturate (hi : lvl) (typ : vtyp) (fn : arg list -> expr) : expr =
   in
   let args, params, _, _ = args_of_typ hi typ in
 
-  let rec go : [`TmParam of typ | `TpParam of kind] list -> expr = function
-  | [] -> fn args
+  let rec go (hi_shift : int) : [`TmParam of typ | `TpParam of kind] list -> expr = function
+  | [] -> fn hi_shift args
   | `TmParam t :: ps ->
     let a = freshen_str "a" in
-    Lam (a, t, go ps)
+    Lam (a, t, go (hi_shift + 1) ps)
   | `TpParam k :: ps ->
     let b = freshen_str "b" in
-    Tlam (b, k, go ps, `inserted)
-  in go params
-
+    Tlam (b, k, go hi_shift ps, `inserted)
+  in go 0 params
 
 (* to allow implicit instantiation, we sometimes insert an application for the user *)
-let insert (scn : scene) (e, t : expr * vtyp) : expr * vtyp =
+let rec insert (scn : scene) (e, t : expr * vtyp) : expr * vtyp =
   match force t with
   | VForall (x, bod) ->
     let m = fresh (mask_of scn) x in
     let m' = eval scn.env m in
-    (Inst (e, m), capp bod m')
+    insert scn (Inst (e, m), capp bod m')
   | t -> (e, t)
 let insert_unless (scn : scene) (e, t : expr * vtyp) : expr * vtyp =
   match e with
@@ -112,15 +111,15 @@ let rec kind_of (scn : scene) : rtyp -> typ * kind = function
   (Tapp (t1, t2), kv)
 | RTLet (x, k, t, rest) ->
   let (scn, t, vt, k) = infer_let_type scn x k t in
-  let (rest, krest) = kind_of (define_typ x vt k scn) rest in
+  let (rest, krest) = kind_of (fst @@ define_typ x vt k scn) rest in
   (TLet (x, k, t, rest), krest)
 | RTAbs (x, xk, t) ->
   let xk = maybe_rkind "k" xk in
-  let (t, tk) = kind_of (assume_typ x xk `EUnsolved scn) t in
+  let (t, tk) = kind_of (fst @@ assume_typ x xk `EUnsolved scn) t in
   (TAbs (x, xk, B t), KArrow (xk, tk))
 | RForall (x, xk, t) ->
   let xk = maybe_rkind "k" xk in
-  let t = is_type (assume_typ x xk `EUnsolved scn) t in
+  let t = is_type (fst @@ assume_typ x xk `EUnsolved scn) t in
   (Forall (x, xk, B t), Star)
 | RHole -> (fresh (mask_of scn) "t", Star)
 | RQvar x -> begin match x with
@@ -145,7 +144,7 @@ and infer_let_type (scn : scene) (x : string) (_ : rkind option) (t : rtyp) : sc
   let (t, k) = kind_of scn t in
   let vt = eval scn.env t in
   let t = quote scn.height vt in
-  (define_typ x vt k scn, t, vt, k)
+  (fst @@ define_typ x vt k scn, t, vt, k)
 
 (* intermediary type used in inference lookahead *)
 type split_arg = [`app of rexpr | `inst of rtyp]
@@ -166,13 +165,13 @@ let rec infer (scn : scene) : rexpr -> expr * vtyp = function
   begin match x with
   | ["builtin"; "int-add"] ->
     let t = VArrow (VBase `Int, VArrow (VBase `Int, VBase `Int)) in
-    let e = saturate scn.height t (function
+    let e = saturate scn.height t (fun _ -> function
     | [`TmArg e1; `TmArg e2] -> BinOp (e1, IntAdd, e2)
     | _ -> failwith "absurd!")
     in e, t
   | ["builtin"; "int-mul"] ->
     let t = VArrow (VBase `Int, VArrow (VBase `Int, VBase `Int)) in
-    let e = saturate scn.height t (function
+    let e = saturate scn.height t (fun _ -> function
     | [`TmArg e1; `TmArg e2] -> BinOp (e1, IntMul, e2)
     | _ -> failwith "absurd!")
     in e, t
@@ -180,18 +179,19 @@ let rec infer (scn : scene) : rexpr -> expr * vtyp = function
   | ["builtin"; "bool-false"] -> Lit (`Bool false), VBase `Bool
   | x -> match lookup_term x scn with
     | None -> elab_complain scn (UndefinedVar x)
-    | Some (i, t, ECtor {parent = _; params}) -> lams_ctor scn.height i params, t
+    | Some (Idx i, t, ECtor {parent = _}) ->
+      saturate scn.height t (fun shift args -> Ctor (Idx (i + shift), args)), t
     | Some (i, t, EVar) -> Var i, t
   end
 
 | RLam (x, xt, e) ->
   let xt = eval scn.env (maybe_rtyp scn "x" xt) in
-  let (e, te) = infer (assume x xt scn) e in
+  let (e, te) = infer (fst @@ assume x xt scn) e in
   (Lam (x, quote scn.height xt, e), VArrow (xt, te))
 
 | RTlam (x, xk, e) ->
   let xk = maybe_rkind "k" xk in
-  let (e, te) = insert_unless scn @@ infer (assume_typ x xk `EUnsolved scn) e in
+  let (e, te) = insert_unless scn @@ infer (fst @@ assume_typ x xk `EUnsolved scn) e in
   (Tlam (x, xk, e, `user), VForall (x, clos_of scn te xk))
 
 | RApp (e1, e2) ->
@@ -213,7 +213,7 @@ let rec infer (scn : scene) : rexpr -> expr * vtyp = function
   let (t, k) = kind_of scn t in
 
   let x = freshen_str "x" in
-  let ret = fresh (mask_of (assume_typ x k `ESolved scn)) "ret" in
+  let ret = fresh (mask_of (fst @@ assume_typ x k `ESolved scn)) "ret" in
   let clos = {knd = k; env = scn.env; bdr = B ret} in
 
   unify' scn (VForall (x, clos)) te;
@@ -221,7 +221,7 @@ let rec infer (scn : scene) : rexpr -> expr * vtyp = function
 
 | RLet (rc, x, ps, t, e, rest) ->
   let (scn, _, e, te) = infer_let scn rc x ps t e in
-  let (rest, trest) = infer (assume x te scn) rest in
+  let (rest, trest) = infer (fst @@ assume x te scn) rest in
   (Let (rc, x, quote scn.height te, e, rest), trest)
 
 (* TODO: reorganize this case (and more stuff with ctors) *)
@@ -259,7 +259,7 @@ and check (scn : scene) (e : rexpr) (t : vtyp) : expr = match e, force t with
   check scn (RLam (x, None, e)) (VArrow (lt, rt))
   
 | RLam (x, None, e), VArrow (lt, rt) ->
-  let e = check (assume x lt scn) e rt in
+  let e = check (fst @@ assume x lt scn) e rt in
   Lam (x, quote scn.height lt, e)
 
 | RTlam (x, Some _, e), VForall (x', c) ->
@@ -268,7 +268,7 @@ and check (scn : scene) (e : rexpr) (t : vtyp) : expr = match e, force t with
 
 | RTlam (x, None, e), VForall (_, c) ->
   let ret_typ = cinst_at scn.height c in
-  let e = check (assume_typ x c.knd `EUnsolved scn) e ret_typ in
+  let e = check (fst @@ assume_typ x c.knd `EUnsolved scn) e ret_typ in
   Tlam (x, c.knd, e, `user)
 
 | RLet (rc, x, ps, t, e, rest), t_rest ->
@@ -301,14 +301,14 @@ and process_params (scn : scene) (ps : rparam list) (ret_typ : rtyp option) : (s
   | RParam (x, t) :: ps ->
     let t = maybe_rtyp scn x t in
     let vt = eval scn.env t in
-    let scn = assume x vt scn in
+    let scn = fst @@ assume x vt scn in
     let (mkscn, all_typ, ret_typ, lams) = process_params scn ps ret_typ in
-    ((fun s -> mkscn (assume x vt s)), Arrow (t, all_typ), ret_typ, fun e -> Lam (x, t, lams e))
+    ((fun s -> mkscn (fst @@ assume x vt s)), Arrow (t, all_typ), ret_typ, fun e -> Lam (x, t, lams e))
   | RTParam (x, k) :: ps ->
     let k = maybe_rkind x k in
-    let scn = assume_typ x k `EUnsolved scn in
+    let scn = fst @@ assume_typ x k `EUnsolved scn in
     let (mkscn, all_typ, ret_typ, lams) = process_params scn ps ret_typ in
-    ((fun s -> mkscn (assume_typ x k `EUnsolved s)), Forall (x, k, B all_typ), ret_typ, fun e -> Tlam (x, k, lams e, `user))
+    ((fun s -> mkscn (fst @@ assume_typ x k `EUnsolved s)), Forall (x, k, B all_typ), ret_typ, fun e -> Tlam (x, k, lams e, `user))
 
 (* compute the scene representing a [let]'s inner scope, with all parameters bound.
   also returns the entire binding's type, and just its return type (without parameters)
@@ -317,13 +317,13 @@ and scene_of_let (scn : scene) (rc : bool) (x : string) (ps : rparam list) (ret_
   let (mkscn, all_typ, ret_typ, lams) = process_params scn ps ret_typ in
   let all_typ = eval scn.env all_typ in
   (* if the binding is recursive, extend the scene with it *)
-  let inner_scn = mkscn @@ if rc then assume x all_typ scn else scn in
+  let inner_scn = mkscn @@ if rc then fst @@ assume x all_typ scn else scn in
   (inner_scn, all_typ, ret_typ, lams)
 
 and infer_let (scn : scene) (rc : bool) (x : string) (ps : rparam list) (t : rtyp option) (e : rexpr) : scene * scene * expr * vtyp =
   let (inner_scn, all_typ, ret_typ, lams) = scene_of_let scn rc x ps t in
   let bod = lams @@ check inner_scn e ret_typ in
-  (assume x all_typ scn, inner_scn, bod, all_typ)
+  (fst @@ assume x all_typ scn, inner_scn, bod, all_typ)
 
 and infer_branch (scn : scene) (scrut_typ : vtyp) (pat : rpattern) (branch : rexpr) : pattern * expr * vtyp =
   let (pat, scn) = scene_of_pattern scn scrut_typ pat in
@@ -346,25 +346,77 @@ let rec return_type (hi : lvl) : vtyp -> vtyp * vparam list = function
   in ret, `TpParam c.knd :: params
 | t -> t, []
 
-(* modify the scene with a new data declaration and its constructors *)
+let lvls_of_tparams (hi : lvl) (tps : rtparam list) : tparam list * lvl list =
+  let rec go hi tps = match tps with (* TODO make tailrec *)
+  | [] -> hi, [], []
+  | RTParam (x, k) :: rest ->
+    let k = maybe_rkind "k" k in
+    let scn, tps', lvls' = go (inc hi) rest in
+    scn, (TParam (x, k) :: tps'), (lvls' @ [hi])
+  in let _, tps, lvls = go hi tps in tps, lvls
+let scene_of_tparams (scn : scene) (tps : tparam list) : scene =
+  let rec go scn tps = match tps with (* TODO make tailrec? *)
+  | [] -> scn
+  | TParam (x, k) :: rest ->
+    let scn, _ = assume_typ x k `EUnsolved scn in
+    go scn rest
+  in go scn tps
+let rec data_full_kind (tps : tparam list) (ret_k : kind) : kind =
+  match tps with
+  | [] -> ret_k
+  | TParam (_, k) :: rest -> KArrow (k, data_full_kind rest ret_k)
+
 exception BadCtorReturn
-let declare_ctor (parent : lvl) (scn : scene) (RCtor {nam; t} : rctor) : scene * lvl =
-  let t = is_type scn t in
-  let vt = eval scn.env t in
-  let rett = return_type scn.height (eval scn.env t) in (* ctor's return type must be the data it belongs to *)
-  match rett with
-  | VNeut (VQvar i, _), params when parent = i ->
-    let ctor_lvl = scn.scope.term_height in
-    assume_ctor nam vt parent params scn, Lvl ctor_lvl
+let matches_parent (expect_i : lvl) (expect_lvls : lvl list) (rett : vtyp) : unit =
+  let rec go = function
+  | _, [] -> ()
+  | VNeut (VQvar i, []) :: spine, lvl :: lvls when lvl = i -> go (spine, lvls)
   | _ -> raise BadCtorReturn
-let declare_data (scn : scene) (x : string) (k : rkind option) (ctors : rctor list) : scene * kind * string list =
-  let k = maybe_rkind (freshen_str "k") k in
-  let parent = scn.height in (* slightly hacky: get the height before [assume_typ], will be the lvl of the type just defined *)
+  in match rett with
+  | VNeut (VQvar actual_i, spine) when expect_i = actual_i -> go (spine, expect_lvls)
+  | _ -> raise BadCtorReturn
+let rec add_tparams (tps : tparam list) (t : typ) : typ =
+  match tps with
+  | [] -> t
+  | TParam (x, k) :: rest -> Forall (x, k, B (add_tparams rest t))
 
-  let scn = assume_typ x k `ESolved scn in
-  let scn = {scn with scope = Scope.enter scn.scope x} in
-  let scn, ctor_lvls = List.fold_left_map (declare_ctor parent) scn ctors in
-  let scn = {scn with scope = Scope.exit scn.scope `opened} in
+(* modify the scene with a new data declaration and its constructors *)
 
-  let ctor_names = List.map (fun (RCtor {nam; _}) -> nam) ctors in
-  assume_ctors_of parent ctor_lvls scn, k, ctor_names
+(* when processing a data declaration,
+- extract full kind of parent
+- add parent to outer scene
+- build scene with parameters, for checking ctors
+- for each ctor
+  - verify type under inner scene
+  - add params to ctor type
+  - add ctor with full type to outer scene
+*)
+let declare_data (scn : scene) (x : string) (tps : rtparam list) (ret_k : rkind) (ctors : rctor list) : scene * tparam list * kind * string list =
+  (* extract full kind *)
+  let ret_k = lower_kind ret_k in
+  let tps, lvls = lvls_of_tparams (inc scn.height) tps in (* increment height to account for the type name itself *)
+  let full_k = data_full_kind tps ret_k in
+
+  (* add parent to outer scene *)
+  let outer_scn, parent = assume_typ x full_k `ESolved scn in
+  let inner_scn = scene_of_tparams outer_scn tps in
+
+  (* process ctors *)
+  let outer_scn, ctors' = ctors |> List.fold_left_map (fun outer_scn (RCtor {nam; t}) ->
+    (* evaluate ctor's type *)
+    let t = is_type inner_scn t in
+    let vt = eval inner_scn.env t in
+
+    (* validate ctor's return type *)
+    let ret_t, _ = return_type inner_scn.height vt in
+    matches_parent parent lvls ret_t;
+
+    (* build full type and add to ctx *)
+    let full_t = eval outer_scn.env (add_tparams tps t) in
+    let outer_scn, lvl = assume_ctor nam full_t parent outer_scn in
+    outer_scn, (nam, lvl)
+  ) outer_scn in
+  
+  let ctor_names, ctor_lvls = List.split ctors' in
+  let outer_scn = assume_ctors_of parent ctor_lvls outer_scn in
+  outer_scn, tps, full_k, ctor_names

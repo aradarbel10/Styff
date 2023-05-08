@@ -80,6 +80,7 @@ module Scope = struct
   }
   let push_term {names; prefix; term_height; type_height; term_scope; type_scope} x =
     let full = List.rev (x :: prefix) in
+    let i = Lvl term_height in
     {
       names = add_entry x (TermEntry (full, Lvl term_height)) names;
       prefix = prefix;
@@ -87,9 +88,10 @@ module Scope = struct
       type_height = type_height;
       term_scope = full :: term_scope;
       type_scope = type_scope;
-    }
+    }, i
   let push_type {names; prefix; term_height; type_height; term_scope; type_scope} x =
     let full = List.rev (x :: prefix) in
+    let i = Lvl type_height in
     {
       names = add_entry x (TypeEntry (full, Lvl type_height)) names;
       prefix = prefix;
@@ -97,7 +99,7 @@ module Scope = struct
       type_height = type_height + 1;
       term_scope = term_scope;
       type_scope = full :: type_scope;
-    }
+    }, i
   let lookup_entry (t : t) (x : name) : entry option =
     List.fold_left (fun found (_, top) ->
       found <|> lookup_path (fun _ -> true) top x
@@ -162,7 +164,7 @@ end
 *)
 type ctx_entry =
 | EVar
-| ECtor of {parent : lvl; params : vparam list}
+| ECtor of {parent : lvl}
 
 type ctx = (vtyp * ctx_entry) list
 type tctx = kind list
@@ -192,36 +194,40 @@ let empty_scene : scene = {
   range = dummy_range;
 }
 
-let assume (x : string) (t : vtyp) (scn : scene) : scene =
+let assume (x : string) (t : vtyp) (scn : scene) : scene * lvl =
+  let scope, i = Scope.push_term scn.scope x in
   {scn with
     ctx = (t, EVar) :: scn.ctx;
-    scope = Scope.push_term scn.scope x;
-  }
+    scope = scope;
+  }, i
 
-let assume_typ (x : string) (k : kind) (fixed : [`ESolved | `EUnsolved]) (scn : scene) : scene =
+let assume_typ (x : string) (k : kind) (fixed : [`ESolved | `EUnsolved]) (scn : scene) : scene * lvl =
+  let scope, i = Scope.push_type scn.scope x in
   {scn with
     height = inc scn.height;
     tctx = k :: scn.tctx;
     env = (fixed, `EBound, vqvar scn.height) :: scn.env;
-    scope = Scope.push_type scn.scope x;
-  }
+    scope = scope;
+  }, i
 
-let define_typ (x : string) (t : vtyp) (k : kind) (scn : scene) : scene =
+let define_typ (x : string) (t : vtyp) (k : kind) (scn : scene) : scene * lvl =
+  let scope, i = Scope.push_type scn.scope x in
   {scn with
     height = inc scn.height;
     tctx = k :: scn.tctx;
     env = (`ESolved, `EDefed, t) :: scn.env;
-    scope = Scope.push_type scn.scope x
-  }
+    scope = scope;
+  }, i
 
 let mask_of (scn : scene) : mask =
   List.map (fun (_, bound, _) -> bound) scn.env
 let qualify (scn : scene) (x : string) : name = List.rev (x :: scn.scope.prefix)
-let assume_ctor (x : string) (t : vtyp) (parent : lvl) (params : vparam list) (scn : scene) : scene =
+let assume_ctor (x : string) (t : vtyp) (parent : lvl) (scn : scene) : scene * lvl =
+  let scope, i = Scope.push_term scn.scope x in
   {scn with
-    ctx = (t, ECtor {parent = parent; params = params}) :: scn.ctx;
-    scope = Scope.push_term scn.scope x;
-  }
+    ctx = (t, ECtor {parent = parent}) :: scn.ctx;
+    scope = scope;
+  }, i
 
 let assume_ctors_of (x : lvl) (ctors : lvl list) (scn : scene) : scene =
   {scn with
