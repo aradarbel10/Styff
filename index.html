@@ -29,12 +29,14 @@ let ( * ) = builtin.int-mul
 let x : int = 1*2 + 3*4 + 5*6
 print x`
 
+    var paramProg = location.search.split('prog=')[1];
+
     var editor = CodeMirror.fromTextArea(document.getElementById("editor"), {
       lineNumbers: true,
       theme: "blackboard-black",
       lineWrapping: true,
     });
-    editor.setValue(defaultProg);
+    editor.setValue(paramProg ? atob(paramProg) : defaultProg);
     editor.setSize(null, 500);
 
     let getEditorContents = function () { return editor.getValue() };
@@ -52,9 +54,21 @@ print x`
       var cur = outputer.getValue();
       outputer.setValue(cur + msg + "\n");
     }
+
+    function getSharelink() {
+      let base_url = "https://aradarbel10.github.io/Styff/?prog=";
+      let full_url = base_url + btoa(getEditorContents());
+
+      navigator.clipboard.writeText(full_url).then(function() {
+        alert("Sharelink copied to clipboard!");
+      }, function(err) {
+        console.error("Something went wrong...", err);
+      });
+    }
   </script>
 
   <button type="button" id="button">Run</button>
+  <button type="button" onclick="getSharelink()">Share Code</button>
 
   <script type="text/javascript" src="./webapp.js"></script>
 
